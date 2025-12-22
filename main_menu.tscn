@@ -1,6 +1,7 @@
-[gd_scene load_steps=4 format=3 uid="uid://cxxigkblt2pi1"]
+[gd_scene load_steps=5 format=3 uid="uid://cxxigkblt2pi1"]
 
 [ext_resource type="Script" uid="uid://rnki3php8m7i" path="res://main_menu.gd" id="1_7vrkn"]
+[ext_resource type="Texture2D" uid="uid://bycjblkd00rru" path="res://NotebookPlusLogo.svg" id="2_7vrkn"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_7vrkn"]
 bg_color = Color(0, 0, 0, 1)
@@ -37,6 +38,11 @@ text = "Exit"
 [node name="Control6" type="Control" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="TextureRect" type="TextureRect" parent="VBoxContainer/HBoxContainer"]
+layout_mode = 2
+texture = ExtResource("2_7vrkn")
+expand_mode = 2
 
 [node name="AppNameLabel" type="Label" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
