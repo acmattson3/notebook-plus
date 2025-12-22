@@ -20,6 +20,7 @@ config/icon="uid://bycjblkd00rru"
 window/size/viewport_width=1600
 window/size/viewport_height=2560
 window/size/mode=3
+window/handheld/orientation=1
 
 [rendering]
 
