@@ -7,6 +7,7 @@ class_name InkCanvas
 signal dirty_changed(is_dirty: bool)
 signal stroke_committed(stroke_id: String)
 signal strokes_changed() # general "something changed" signal
+signal touch_state_changed(state: Dictionary)
 
 # -----------------------------
 # Public settings (tools/UI)
@@ -27,6 +28,8 @@ signal strokes_changed() # general "something changed" signal
 # Stylus heuristic
 @export var stylus_pressure_threshold: float = 0.001
 @export var stylus_tilt_threshold: float = 0.001
+@export var finger_pressure_max: float = 0.99
+@export var stylus_use_pressure: bool = false
 @export var treat_nan_pressure_as_finger: bool = true
 @export var debug_input: bool = false
 
@@ -204,7 +207,10 @@ func _gui_input(event: InputEvent) -> void:
 
 func _handle_touch(e: InputEventScreenTouch) -> void:
 	if e.pressed:
+		if debug_input:
+			print("[InkCanvas] touch down idx=%d %s" % [e.index, _debug_event_info(e)])
 		var is_styl = _looks_like_stylus(e)
+		_emit_touch_state(e, is_styl)
 		_pointers[e.index] = {
 			"pos": e.position,
 			"last_pos": e.position,
@@ -214,12 +220,19 @@ func _handle_touch(e: InputEventScreenTouch) -> void:
 		# Basic palm rejection:
 		# If stylus is active (drawing), ignore new non-stylus touches.
 		if _mode == "draw" and _active_stylus_index != INVALID_POINTER_ID and not is_styl:
+			_pointers.erase(e.index)
 			return
 
 		_update_mode()
 		_begin_mode_if_needed()
 	else:
 		# Release
+		var release_is_stylus = false
+		if _pointers.has(e.index):
+			release_is_stylus = _pointers[e.index].get("is_stylus", false)
+		else:
+			release_is_stylus = _looks_like_stylus(e)
+		_emit_touch_state(e, release_is_stylus)
 		if _pointers.has(e.index):
 			_pointers.erase(e.index)
 
@@ -237,6 +250,11 @@ func _handle_drag(e: InputEventScreenDrag) -> void:
 	# Update pointer positions
 	_pointers[e.index]["last_pos"] = _pointers[e.index]["pos"]
 	_pointers[e.index]["pos"] = e.position
+	var is_styl = _looks_like_stylus(e)
+	_pointers[e.index]["is_stylus"] = is_styl
+	_emit_touch_state(e, is_styl)
+	if debug_input and _pointers[e.index]["is_stylus"] and e.relative.length() == 0:
+		print("[InkCanvas] drag idx=%d %s" % [e.index, _debug_event_info(e)])
 
 	# Re-evaluate mode on the fly; allows switching to scroll mid-gesture
 	var old_mode = _mode
@@ -271,22 +289,28 @@ func _handle_mouse_button(e: InputEventMouseButton) -> void:
 	if e.pressed:
 		if e.button_index == MOUSE_BUTTON_MIDDLE or (e.button_index == MOUSE_BUTTON_LEFT and e.shift_pressed):
 			_start_mouse_scroll(e.position)
+			_emit_touch_state(e, false)
 			return
 		if e.button_index == MOUSE_BUTTON_LEFT:
 			_start_mouse_draw(e.position)
+			_emit_touch_state(e, true)
 			return
 		if e.button_index == MOUSE_BUTTON_RIGHT:
 			_start_mouse_erase(e.position)
+			_emit_touch_state(e, false)
 			return
 	else:
 		if _mouse_scroll_active and (e.button_index == MOUSE_BUTTON_MIDDLE or e.button_index == MOUSE_BUTTON_LEFT):
 			_stop_mouse_scroll()
+			_emit_touch_state(e, false)
 			return
 		if e.button_index == MOUSE_BUTTON_LEFT:
 			_stop_mouse_draw()
+			_emit_touch_state(e, true)
 			return
 		if e.button_index == MOUSE_BUTTON_RIGHT:
 			_stop_mouse_erase()
+			_emit_touch_state(e, false)
 			return
 
 func _handle_mouse_motion(e: InputEventMouseMotion) -> void:
@@ -299,6 +323,7 @@ func _handle_mouse_motion(e: InputEventMouseMotion) -> void:
 		return
 
 	_update_mouse_pointers(e.position)
+	_emit_touch_state(e, (e.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0)
 
 	# If right mouse is down, force erase behavior for desktop testing.
 	if _pointers.has(MOUSE_ERASE_ID) and not _pointers.has(MOUSE_DRAW_ID) and not _mouse_scroll_active:
@@ -396,6 +421,31 @@ func _begin_mode_if_needed() -> void:
 func _looks_like_stylus(e: InputEvent) -> bool:
 	# Godot touch events expose pressure/tilt on some devices.
 	# This heuristic may be device dependent; keep it adjustable.
+	var explicit_stylus := false
+	var source = _get_event_source(e)
+	if source != null:
+		var stylus_source = _get_input_event_const("SOURCE_STYLUS")
+		if stylus_source != null and int(source) == int(stylus_source):
+			explicit_stylus = true
+			return true
+		var touch_source = _get_input_event_const("SOURCE_TOUCHSCREEN")
+		if touch_source != null and int(source) == int(touch_source):
+			return false
+
+	var tool = _get_event_tool(e)
+	if tool != null:
+		var stylus_tool = _get_input_event_const("TOOL_TYPE_STYLUS")
+		if stylus_tool != null and int(tool) == int(stylus_tool):
+			explicit_stylus = true
+			return true
+		var eraser_tool = _get_input_event_const("TOOL_TYPE_ERASER")
+		if eraser_tool != null and int(tool) == int(eraser_tool):
+			explicit_stylus = true
+			return true
+		var finger_tool = _get_input_event_const("TOOL_TYPE_FINGER")
+		if finger_tool != null and int(tool) == int(finger_tool):
+			return false
+
 	var pressure := 0.0
 	var tilt := Vector2.ZERO
 
@@ -412,12 +462,158 @@ func _looks_like_stylus(e: InputEvent) -> bool:
 	if treat_nan_pressure_as_finger and is_nan(pressure):
 		pressure = 0.0
 
-	if pressure > stylus_pressure_threshold:
-		return true
+	if not explicit_stylus and pressure >= finger_pressure_max and tilt.length() <= stylus_tilt_threshold:
+		return false
 	if tilt.length() > stylus_tilt_threshold:
+		return true
+	if stylus_use_pressure and pressure > stylus_pressure_threshold:
 		return true
 
 	return false
+
+func _get_event_source(e: InputEvent) -> Variant:
+	if e.has_method("get_source"):
+		return e.get_source()
+	return null
+
+func _get_event_tool(e: InputEvent) -> Variant:
+	if e.has_method("get_tool"):
+		return e.get_tool()
+	return null
+
+func _get_input_event_const(name: String) -> Variant:
+	if ClassDB.class_has_integer_constant("InputEvent", name):
+		return ClassDB.class_get_integer_constant("InputEvent", name)
+	return null
+
+func _debug_event_info(e: InputEvent) -> String:
+	var source = _get_event_source(e)
+	var tool = _get_event_tool(e)
+	var pressure := 0.0
+	var tilt := Vector2.ZERO
+	if e is InputEventScreenTouch or e is InputEventScreenDrag:
+		pressure = e.pressure
+		tilt = e.tilt
+	return "src=%s tool=%s pressure=%.4f tilt=%.4f" % [
+		str(source), str(tool), pressure, tilt.length()
+	]
+
+func _emit_touch_state(e: InputEvent, is_stylus: bool) -> void:
+	if not debug_input:
+		return
+	var source = _get_event_source(e)
+	var tool = _get_event_tool(e)
+	var pos = Vector2.ZERO
+	var rel = Vector2.ZERO
+	var pressure := 0.0
+	var tilt := Vector2.ZERO
+	var velocity = Vector2.ZERO
+	var pressed = false
+	var index = -1
+	var device = "unknown"
+	var button_index = -1
+	var button_mask = 0
+	var shift = false
+	var alt = false
+	var ctrl = false
+	var meta = false
+	var pen_inverted = false
+	if e is InputEventScreenTouch:
+		device = "touch"
+		pos = e.position
+		pressed = e.pressed
+		index = e.index
+	elif e is InputEventScreenDrag:
+		device = "touch"
+		pos = e.position
+		rel = e.relative
+		velocity = e.velocity
+		index = e.index
+	elif e is InputEventMouseButton:
+		device = "mouse"
+		pos = e.position
+		button_index = e.button_index
+		button_mask = e.button_mask
+		pressed = e.pressed
+		shift = e.shift_pressed
+		alt = e.alt_pressed
+		ctrl = e.ctrl_pressed
+		meta = e.meta_pressed
+	elif e is InputEventMouseMotion:
+		device = "mouse"
+		pos = e.position
+		rel = e.relative
+		velocity = e.velocity
+		button_mask = e.button_mask
+		shift = e.shift_pressed
+		alt = e.alt_pressed
+		ctrl = e.ctrl_pressed
+		meta = e.meta_pressed
+	if e.has_method("get_pressure"):
+		pressure = e.get_pressure()
+	if e.has_method("get_tilt"):
+		tilt = e.get_tilt()
+	if e.has_method("get_pen_inverted"):
+		pen_inverted = e.get_pen_inverted()
+	elif e.has_method("is_pen_inverted"):
+		pen_inverted = e.is_pen_inverted()
+	if treat_nan_pressure_as_finger and is_nan(pressure):
+		pressure = 0.0
+	var counts = _count_pointer_types()
+	var pointer_snapshot: Array = []
+	for idx in _pointers.keys():
+		var p = _pointers[idx]
+		pointer_snapshot.append({
+			"index": idx,
+			"pos": p.get("pos", Vector2.ZERO),
+			"last_pos": p.get("last_pos", Vector2.ZERO),
+			"is_stylus": p.get("is_stylus", false),
+		})
+	var state = {
+		"event_class": e.get_class(),
+		"device": device,
+		"index": index,
+		"pressed": pressed,
+		"position": pos,
+		"relative": rel,
+		"velocity": velocity,
+		"pressure": pressure,
+		"tilt": tilt,
+		"tilt_length": tilt.length(),
+		"tilt_angle_rad": tilt.angle(),
+		"button_index": button_index,
+		"button_mask": button_mask,
+		"shift": shift,
+		"alt": alt,
+		"ctrl": ctrl,
+		"meta": meta,
+		"pen_inverted": pen_inverted,
+		"source": source,
+		"tool": tool,
+		"is_stylus": is_stylus,
+		"mode": _mode,
+		"active_stylus_index": _active_stylus_index,
+		"stylus_count": counts["stylus"],
+		"finger_count": counts["finger"],
+		"strokes_count": strokes.size(),
+		"active_points": _active_stroke.get("points", []).size(),
+		"scroll_y": _scroll_y,
+		"pointers": pointer_snapshot,
+	}
+	emit_signal("touch_state_changed", state)
+
+func _count_pointer_types() -> Dictionary:
+	var stylus_count = 0
+	var finger_count = 0
+	for idx in _pointers.keys():
+		if _pointers[idx]["is_stylus"]:
+			stylus_count += 1
+		else:
+			finger_count += 1
+	return {
+		"stylus": stylus_count,
+		"finger": finger_count,
+	}
 
 # -----------------------------
 # Stroke lifecycle
@@ -588,13 +784,9 @@ func _update_debug_label() -> void:
 	if not _debug_label:
 		return
 	_debug_label.visible = OS.is_debug_build()
-	var stylus_count = 0
-	var finger_count = 0
-	for idx in _pointers.keys():
-		if _pointers[idx]["is_stylus"]:
-			stylus_count += 1
-		else:
-			finger_count += 1
+	var counts = _count_pointer_types()
+	var stylus_count = counts["stylus"]
+	var finger_count = counts["finger"]
 	var active_pts = 0
 	if not _active_stroke.is_empty():
 		active_pts = _active_stroke.get("points", []).size()
@@ -612,6 +804,7 @@ func _event_position_string(event: InputEvent) -> String:
 	if event is InputEventMouseMotion:
 		return str(event.position)
 	return "n/a"
+
 
 func _color_to_html(c: Color) -> String:
 	return "#" + c.to_html(false)

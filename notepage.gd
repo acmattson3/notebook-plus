@@ -8,6 +8,7 @@ var _modified_ts: int = 0
 var _dirty: bool = false
 var _autosave_timer: Timer
 var _pending_note: Dictionary = {}
+var _debugging: bool = false
 
 @onready var _title_text: TextEdit = $MainContainer/TopBarContainer/TitleTextEdit
 
@@ -22,6 +23,8 @@ func _ready() -> void:
 		ink_canvas.dirty_changed.connect(_on_canvas_dirty_changed)
 		ink_canvas.strokes_changed.connect(_on_canvas_strokes_changed)
 		ink_canvas.gui_input.connect(_on_ink_canvas_gui_input)
+		if not ink_canvas.touch_state_changed.is_connected(_on_ink_canvas_touch_state_changed):
+			ink_canvas.touch_state_changed.connect(_on_ink_canvas_touch_state_changed)
 
 	if _title_text:
 		_title_text.text_changed.connect(_on_title_changed)
@@ -159,3 +162,10 @@ func _on_exit_button_pressed() -> void:
 		tree.current_scene.queue_free()
 	root.add_child(instance)
 	tree.current_scene = instance
+
+func _on_ink_canvas_touch_state_changed(state: Dictionary) -> void:
+	if not _debugging:
+		return
+	%DebugLabel.text = ""
+	for key in state.keys():
+		%DebugLabel.text += str(key) + ": " + str(state[key]) + ";  "

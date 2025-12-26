@@ -1,0 +1,32 @@
+Notebook-plus tablet input status (temporary notes)
+
+Context
+- Goal: On tablet, stylus should draw, finger should erase; 2-finger should scroll; palm rejection when stylus active.
+- Issue: On tablet, finger touches are still classified as stylus, so erase/scroll never trigger.
+- Stylus seems to "win" over finger when both present, likely OS/driver-level prioritization.
+
+Current changes in code
+- File: ink_canvas.gd
+- Added classification logic:
+  - Checks InputEvent source/tool (get_source/get_tool + InputEvent constants).
+  - Added finger_pressure_max and stylus_use_pressure (pressure-based stylus detection disabled by default).
+  - Palm rejection now removes non-stylus touches immediately when stylus drawing.
+  - Drag events re-evaluate is_stylus per move.
+- Added debug logging to print source/tool/pressure/tilt on touch down and occasional drag.
+
+Why likely failing
+- On this device, finger may report tool/source values that look like stylus or values are missing/odd.
+- Without raw source/tool values, the mapping cannot be corrected.
+
+Next steps when back
+1) Get raw input values:
+   - Run with debug_input = true in InkCanvas.
+   - Capture prints like: "[InkCanvas] touch down idx=... src=... tool=... pressure=... tilt=..." for finger vs stylus.
+   - Use those values to hard-map stylus vs finger in _looks_like_stylus.
+2) If prints impossible on tablet, consider:
+   - Add on-screen debug label showing src/tool/pressure/tilt for last event.
+   - OR store last event info in a UI Label node for visibility on-device.
+3) Once source/tool values known, add explicit check (e.g., if source == X then finger, if tool == Y then stylus).
+
+Files touched
+- ink_canvas.gd (stylus classification tweaks + debug logging)
