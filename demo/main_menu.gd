@@ -11,6 +11,7 @@ var _sort_field: String = SORT_MODIFIED
 var _sort_ascending: bool = false
 
 func _ready() -> void:
+	_disable_raw_input_recording()
 	_reload_notepage_list()
 
 # Instantiate NotepageButton nodes/classes, filling in their information based on the JSON saves.
@@ -112,6 +113,7 @@ func _on_notepage_duplicate_requested(_note_id: String, file_path: String) -> vo
 	_reload_notepage_list()
 
 func _on_notepage_open_requested(_note_id: String, file_path: String) -> void:
+	_clear_raw_input_cache()
 	if file_path == "":
 		return
 	var note = _load_note_dict(file_path)
@@ -192,7 +194,20 @@ func _apply_sorted_buttons(buttons: Array) -> void:
 	for i in range(buttons.size()):
 		notepage_button_container.move_child(buttons[i], i)
 
+func _clear_raw_input_cache() -> void:
+	if Engine.has_singleton("NotebookPlusRawInput"):
+		var raw = Engine.get_singleton("NotebookPlusRawInput")
+		if raw != null and raw.has_method("clear_events"):
+			raw.clear_events()
+
+func _disable_raw_input_recording() -> void:
+	if Engine.has_singleton("NotebookPlusRawInput"):
+		var raw = Engine.get_singleton("NotebookPlusRawInput")
+		if raw != null and raw.has_method("set_recording_enabled"):
+			raw.set_recording_enabled(false)
+
 func _on_new_notepage_button_pressed() -> void:
+	_clear_raw_input_cache()
 	var scene: PackedScene = load("res://notepage.tscn")
 	if not scene:
 		return

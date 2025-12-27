@@ -77,6 +77,9 @@ var _raw_input_active: bool = false
 var _last_raw_event_msec: int = 0
 var _last_raw_empty_log_msec: int = 0
 var _last_raw_status_emit_msec: int = 0
+var _input_lockout_until_msec: int = 0
+var _raw_accept_after_msec: int = 0
+var _raw_await_fresh_down: bool = false
 const ERASER_PREVIEW_COLOR := Color(1, 0.2, 0.2, 0.25)
 
 # Android MotionEvent constants (subset)
@@ -99,9 +102,13 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	print("[InkCanvas] ready size=%s visible=%s" % [size, str(visible)])
 	call_deferred("_log_post_layout_size")
+	_input_lockout_until_msec = Time.get_ticks_msec() + 200
+	_raw_accept_after_msec = Time.get_ticks_msec()
 	if use_android_raw_input and Engine.has_singleton("NotebookPlusRawInput"):
 		_raw_input = Engine.get_singleton("NotebookPlusRawInput")
 		_emit_raw_status("singleton_loaded")
+		if _raw_input != null and _raw_input.has_method("clear_events"):
+			_raw_input.clear_events()
 	if OS.is_debug_build():
 		_debug_label = Label.new()
 		_debug_label.name = "InputDebug"
@@ -134,6 +141,19 @@ func set_pen_thickness(t: float) -> void:
 
 func set_eraser_radius(r: float) -> void:
 	eraser_radius_px = max(1.0, r)
+
+func reset_input_state() -> void:
+	_pointers.clear()
+	_active_stroke = {}
+	_mode = "none"
+	_active_stylus_index = INVALID_POINTER_ID
+	_input_lockout_until_msec = Time.get_ticks_msec() + 200
+	_raw_accept_after_msec = Time.get_ticks_msec()
+	_raw_input_active = false
+	_last_raw_event_msec = 0
+	_raw_await_fresh_down = true
+	if _raw_input != null and _raw_input.has_method("clear_events"):
+		_raw_input.clear_events()
 
 func undo() -> void:
 	if _undo.is_empty():
@@ -210,6 +230,9 @@ func get_scroll_y() -> float:
 # Input handling
 # -----------------------------
 func _gui_input(event: InputEvent) -> void:
+	if _input_lockout_active():
+		accept_event()
+		return
 	if use_android_raw_input and _raw_input != null and (force_android_raw_input or _raw_input_active):
 		if event is InputEventScreenTouch or event is InputEventScreenDrag:
 			return
@@ -900,7 +923,14 @@ func _event_position_string(event: InputEvent) -> String:
 		return str(event.position)
 	return "n/a"
 
+func _input_lockout_active() -> bool:
+	return _input_lockout_until_msec > 0 and Time.get_ticks_msec() < _input_lockout_until_msec
+
 func _poll_android_raw_input() -> void:
+	if _input_lockout_active():
+		if _raw_input != null and _raw_input.has_method("clear_events"):
+			_raw_input.clear_events()
+		return
 	if _raw_input == null:
 		_emit_raw_status("singleton_missing")
 		return
@@ -938,6 +968,9 @@ func _emit_raw_status(status: String) -> void:
 	emit_signal("touch_state_changed", state)
 
 func _handle_raw_event(e: Dictionary) -> void:
+	var t_ms = int(e.get("t_ms", 0))
+	if t_ms > 0 and t_ms < _raw_accept_after_msec:
+		return
 	var action = int(e.get("action", -1))
 	var pointer_id = int(e.get("pointer_id", -1))
 	var is_action_index = bool(e.get("is_action_index", true))
@@ -947,6 +980,15 @@ func _handle_raw_event(e: Dictionary) -> void:
 	var pressure = float(e.get("pressure", 0.0))
 	var tilt = float(e.get("tilt", 0.0))
 	var is_styl = _raw_is_stylus(tool, pressure, tilt)
+
+	if _raw_await_fresh_down:
+		if action == RAW_ACTION_DOWN or action == RAW_ACTION_POINTER_DOWN:
+			if is_action_index:
+				_raw_await_fresh_down = false
+			else:
+				return
+		else:
+			return
 
 	if (action == RAW_ACTION_DOWN or action == RAW_ACTION_POINTER_DOWN) and not is_action_index:
 		return

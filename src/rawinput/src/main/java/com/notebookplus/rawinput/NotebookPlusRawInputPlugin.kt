@@ -19,6 +19,7 @@ class NotebookPlusRawInputPlugin(godot: Godot) : GodotPlugin(godot) {
     private val buffer: ArrayDeque<Dictionary> = ArrayDeque(MAX_BUFFER)
     @Volatile private var hookStatus: String = "uninitialized"
     @Volatile private var hookViewName: String = "none"
+    @Volatile private var recordingEnabled: Boolean = true
 
     override fun getPluginName(): String = PLUGIN_NAME
 
@@ -64,6 +65,9 @@ class NotebookPlusRawInputPlugin(godot: Godot) : GodotPlugin(godot) {
     }
 
     private fun record(ev: MotionEvent) {
+        if (!recordingEnabled) {
+            return
+        }
         val actionIndex = ev.actionIndex
         val actionMasked = ev.actionMasked
         val eventTime = ev.eventTime
@@ -119,7 +123,20 @@ class NotebookPlusRawInputPlugin(godot: Godot) : GodotPlugin(godot) {
     }
 
     @UsedByGodot
+    fun set_recording_enabled(enabled: Boolean) {
+        recordingEnabled = enabled
+        if (!enabled) {
+            clear_events()
+        }
+    }
+
+    @UsedByGodot
+    fun is_recording_enabled(): Boolean {
+        return recordingEnabled
+    }
+
+    @UsedByGodot
     fun get_status(): String {
-        return "$hookStatus:$hookViewName"
+        return "$hookStatus:$hookViewName:rec=$recordingEnabled"
     }
 }

@@ -107,6 +107,10 @@ Functions
 
 Dirty means the canvas has unsaved changes.
 
+## Known Bugs
+- Raw input carryover: drawing on the MainMenu background, then opening/creating a notepage can inject those strokes into the notepage (sometimes after a delay, now undoable). Repro: draw on MainMenu blank space, tap New Notepage or open an existing note.
+- Mitigations attempted: clear raw input buffer on scene swap, short input lockout on InkCanvas, ignore raw events before notepage open timestamp, require a fresh DOWN before accepting raw input, and disable raw input recording while in MainMenu.
+
 ## Android Raw Input Plugin
 The raw input plugin lives in `src/` and builds an AAR that is packaged into the project as a v2 Android plugin.
 
