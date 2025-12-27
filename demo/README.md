@@ -127,6 +127,10 @@ Build and install flow:
 .\adb_install_run.ps1
 ```
 
+Notes:
+- `build_rawinput.ps1` and `adb_install_run.ps1` use absolute Windows paths; update them if your repo path differs.
+- `demo/android/build/gradle.properties` and `src/gradle.properties` pin a local JDK path; update if your JDK lives elsewhere.
+
 Enable the plugin in Godot:
 - Project Settings -> Plugins -> `NotebookPlusRawInput`
 
