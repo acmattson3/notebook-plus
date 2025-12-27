@@ -1,0 +1,2 @@
+rootProject.name = "notebookplus-android"
+include(":rawinput")

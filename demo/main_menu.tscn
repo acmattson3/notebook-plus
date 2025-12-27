@@ -1,7 +1,7 @@
 [gd_scene load_steps=5 format=3 uid="uid://cxxigkblt2pi1"]
 
 [ext_resource type="Script" uid="uid://rnki3php8m7i" path="res://main_menu.gd" id="1_7vrkn"]
-[ext_resource type="Texture2D" uid="uid://bycjblkd00rru" path="res://NotebookPlusLogo.svg" id="2_7vrkn"]
+[ext_resource type="Texture2D" uid="uid://dmt5k2km347aq" path="res://NotebookPlusLogo.svg" id="2_7vrkn"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_7vrkn"]
 bg_color = Color(0, 0, 0, 1)
@@ -32,7 +32,7 @@ size_flags_horizontal = 3
 [node name="ExitButton" type="Button" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 40
 text = "Exit"
 
 [node name="Control6" type="Control" parent="VBoxContainer/HBoxContainer"]
@@ -58,7 +58,7 @@ size_flags_horizontal = 3
 [node name="NewNotepageButton" type="Button" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 40
 text = "New
 Notepage"
 
@@ -94,7 +94,7 @@ theme_override_styles/normal = SubResource("StyleBoxEmpty_7vrkn")
 text = "Date Modified"
 
 [node name="Spacer2" type="Control" parent="VBoxContainer/VBoxContainer/HBoxContainer"]
-custom_minimum_size = Vector2(50, 0)
+custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 
 [node name="DateCreatedSortButton" type="Button" parent="VBoxContainer/VBoxContainer/HBoxContainer"]
@@ -104,7 +104,7 @@ theme_override_styles/normal = SubResource("StyleBoxEmpty_7vrkn")
 text = "Date Created"
 
 [node name="EndCap2" type="Control" parent="VBoxContainer/VBoxContainer/HBoxContainer"]
-custom_minimum_size = Vector2(50, 0)
+custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 
 [node name="ScrollContainer" type="ScrollContainer" parent="VBoxContainer"]

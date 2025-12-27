@@ -3,7 +3,7 @@
 NotebookPlus is a digital notebook for sermons and handwritten notes. The long term goal is fast capture with future OCR and AI indexing.
 
 ## Scope
-NotebookPlus is a Godot 4.5 project targeting Android. The MVP is a notepage editor with an InkCanvas drawing surface and a main menu that lists saved pages.
+NotebookPlus is a Godot 4.5 project targeting Android. The MVP is a notepage editor with an InkCanvas drawing surface and a main menu that lists saved pages. The project now includes an Android raw input plugin (v2 AAR) to capture MotionEvent data for stylus/finger differentiation.
 
 ## MVP Features
 - Android stylus draw, finger erase, two finger scroll
@@ -14,12 +14,16 @@ NotebookPlus is a Godot 4.5 project targeting Android. The MVP is a notepage edi
 - Dark mode only, portrait only
 - Main menu list with open, delete, duplicate
 - Sorting by title, date created, date modified
+- Raw Android MotionEvent sampling via v2 plugin (pressure, tilt, tool type)
+- Eraser preview circle that follows the finger while erasing
+- Optional stroke smoothing and round end caps
 
 ## Input Policy
 - Stylus draws and finger erases
 - Two fingers drag to scroll
 - Palm rejection lite: ignore new finger touches while a stylus stroke is active
 - Desktop mapping: left drag draws, right drag erases, middle drag or Shift plus left drag scrolls
+- Android raw input: MotionEvent tool type/tilt/pressure used to distinguish stylus vs finger
 
 ## InkCanvas Behavior
 - Control based, renders in `_draw()` with `draw_polyline()`
@@ -29,6 +33,8 @@ NotebookPlus is a Godot 4.5 project targeting Android. The MVP is a notepage edi
 - Axis aligned simplification runs on commit to compress straight horizontal or vertical segments into endpoints
 - Whole stroke eraser uses bbox quick reject and distance to segment hit test
 - Debugging: set `debug_input = true` to print event info and show a tiny overlay in debug builds
+- Raw input is converted from screen coordinates into InkCanvas local coordinates
+- Optional smoothing (`stroke_smoothing_enabled` and `stroke_smoothing_window`) and round end caps
 
 ## Data Model
 Notes are stored as JSON with an id, metadata, page state, and strokes. Bounding boxes are computed at runtime and are not stored.
@@ -85,6 +91,7 @@ Signals
 - `dirty_changed(is_dirty: bool)`
 - `stroke_committed(stroke_id: String)`
 - `strokes_changed()`
+- `touch_state_changed(state: Dictionary)`
 
 Functions
 - `set_pen_color(c: Color)`
@@ -100,6 +107,33 @@ Functions
 
 Dirty means the canvas has unsaved changes.
 
+## Android Raw Input Plugin
+The raw input plugin lives in `src/` and builds an AAR that is packaged into the project as a v2 Android plugin.
+
+Files and locations:
+- Android plugin source: `src/rawinput/`
+- Addon wrapper: `demo/addons/notebookplus_raw_input/`
+- Built AAR (not committed): `demo/addons/notebookplus_raw_input/bin/notebookplus_raw_input.aar`
+
+Build and install flow:
+1) Build plugin AAR and copy into addon:
+```
+.\build_rawinput.ps1
+```
+2) Export APK in Godot (Android preset, Gradle build enabled). APK is written to:
+- `android-export/NotebookPlus.apk`
+3) Install/run on device:
+```
+.\adb_install_run.ps1
+```
+
+Enable the plugin in Godot:
+- Project Settings -> Plugins -> `NotebookPlusRawInput`
+
+The plugin exposes a singleton:
+- `Engine.get_singleton("NotebookPlusRawInput")`
+- Methods: `poll_events()`, `clear_events()`, `get_status()`
+
 ## Manual Test Checklist
 - Desktop: left drag draws a stroke
 - Desktop: right drag erases a whole stroke
@@ -107,6 +141,7 @@ Dirty means the canvas has unsaved changes.
 - Desktop: tap produces a dot
 - Android: stylus draws, single finger erases
 - Android: two finger drag scrolls without drawing
+- Android: raw input plugin shows MotionEvent data and distinguishes stylus vs finger
 - Undo and redo work for last add or erase
 - Main menu sort buttons toggle ascending and descending
 - Duplicate creates a new note with updated created and modified times

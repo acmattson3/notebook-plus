@@ -2,3 +2,10 @@
 .godot/
 /android/
 *export/
+/demo/.godot/
+/demo/android/
+/src/.gradle/
+/src/build/
+/src/rawinput/build/
+/src/local.properties
+/demo/addons/notebookplus_raw_input/bin/*.aar

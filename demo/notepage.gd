@@ -132,14 +132,8 @@ func _apply_loaded_note(note: Dictionary) -> void:
 		ink_canvas.load_from_note_data(note)
 	_dirty = false
 
-func _on_thickness_tick_button_value_changed(value: Variant) -> void:
-	ink_canvas.set_pen_thickness(value)
-
 func _on_color_picker_button_color_changed(color: Color) -> void:
 	ink_canvas.set_pen_color(color)
-
-func _on_eraser_rad_tick_button_value_changed(value: Variant) -> void:
-	ink_canvas.set_eraser_radius(value)
 
 func _on_undo_button_pressed() -> void:
 	ink_canvas.undo()
@@ -169,3 +163,9 @@ func _on_ink_canvas_touch_state_changed(state: Dictionary) -> void:
 	%DebugLabel.text = ""
 	for key in state.keys():
 		%DebugLabel.text += str(key) + ": " + str(state[key]) + ";  "
+
+func _on_thickness_slider_value_changed(value: float) -> void:
+	ink_canvas.set_pen_thickness(value)
+
+func _on_eraser_slider_value_changed(value: float) -> void:
+	ink_canvas.set_eraser_radius(value)

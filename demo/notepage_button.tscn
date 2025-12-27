@@ -79,6 +79,7 @@ theme_override_styles/normal = SubResource("StyleBoxEmpty_drg7l")
 
 [node name="HoldingTimer" type="Timer" parent="."]
 unique_name_in_owner = true
+wait_time = 0.5
 
 [node name="OptionsContainer" type="PanelContainer" parent="."]
 unique_name_in_owner = true

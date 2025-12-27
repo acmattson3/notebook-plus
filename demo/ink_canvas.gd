@@ -13,7 +13,7 @@ signal touch_state_changed(state: Dictionary)
 # Public settings (tools/UI)
 # -----------------------------
 @export var page_width_px: float = 1600.0
-@export var side_margin_px: float = 64.0
+@export var side_margin_px: float = 0.0
 
 @export var pen_color: Color = Color(1, 1, 1, 1)
 @export var pen_thickness: float = 5.0
@@ -32,6 +32,10 @@ signal touch_state_changed(state: Dictionary)
 @export var stylus_use_pressure: bool = false
 @export var treat_nan_pressure_as_finger: bool = true
 @export var debug_input: bool = false
+@export var use_android_raw_input: bool = true
+@export var force_android_raw_input: bool = true
+@export var stroke_smoothing_enabled: bool = true
+@export var stroke_smoothing_window: int = 3
 
 # -----------------------------
 # Internal state
@@ -68,6 +72,25 @@ var _active_stroke: Dictionary = {}
 
 var _mouse_scroll_active: bool = false
 var _debug_label: Label
+var _raw_input = null
+var _raw_input_active: bool = false
+var _last_raw_event_msec: int = 0
+var _last_raw_empty_log_msec: int = 0
+var _last_raw_status_emit_msec: int = 0
+const ERASER_PREVIEW_COLOR := Color(1, 0.2, 0.2, 0.25)
+
+# Android MotionEvent constants (subset)
+const RAW_ACTION_DOWN := 0
+const RAW_ACTION_UP := 1
+const RAW_ACTION_MOVE := 2
+const RAW_ACTION_CANCEL := 3
+const RAW_ACTION_POINTER_DOWN := 5
+const RAW_ACTION_POINTER_UP := 6
+
+const RAW_TOOL_TYPE_FINGER := 1
+const RAW_TOOL_TYPE_STYLUS := 2
+const RAW_TOOL_TYPE_MOUSE := 3
+const RAW_TOOL_TYPE_ERASER := 4
 
 # -----------------------------
 # Node setup
@@ -76,6 +99,9 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	print("[InkCanvas] ready size=%s visible=%s" % [size, str(visible)])
 	call_deferred("_log_post_layout_size")
+	if use_android_raw_input and Engine.has_singleton("NotebookPlusRawInput"):
+		_raw_input = Engine.get_singleton("NotebookPlusRawInput")
+		_emit_raw_status("singleton_loaded")
 	if OS.is_debug_build():
 		_debug_label = Label.new()
 		_debug_label.name = "InputDebug"
@@ -85,6 +111,9 @@ func _ready() -> void:
 		_debug_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.8))
 		add_child(_debug_label)
 	queue_redraw()
+
+func _process(_delta: float) -> void:
+	_poll_android_raw_input()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED and debug_input:
@@ -181,6 +210,11 @@ func get_scroll_y() -> float:
 # Input handling
 # -----------------------------
 func _gui_input(event: InputEvent) -> void:
+	if use_android_raw_input and _raw_input != null and (force_android_raw_input or _raw_input_active):
+		if event is InputEventScreenTouch or event is InputEventScreenDrag:
+			return
+		if event is InputEventMouseButton or event is InputEventMouseMotion:
+			return
 	if debug_input:
 		print("[InkCanvas] event: %s pos=%s" % [event.get_class(), _event_position_string(event)])
 		_update_debug_label()
@@ -233,6 +267,9 @@ func _handle_touch(e: InputEventScreenTouch) -> void:
 		else:
 			release_is_stylus = _looks_like_stylus(e)
 		_emit_touch_state(e, release_is_stylus)
+		if e.index == _active_stylus_index and _mode == "draw" and _active_stroke.get("points", []).size() == 1:
+			var doc = _screen_to_doc(e.position)
+			_add_point_to_stroke(_active_stroke, doc, e, float(Time.get_unix_time_from_system()))
 		if _pointers.has(e.index):
 			_pointers.erase(e.index)
 
@@ -241,6 +278,7 @@ func _handle_touch(e: InputEventScreenTouch) -> void:
 			_finish_active_stroke()
 
 		_update_mode()
+		queue_redraw()
 		# If mode becomes none, nothing else to do
 
 func _handle_drag(e: InputEventScreenDrag) -> void:
@@ -284,6 +322,22 @@ func _handle_mouse_button(e: InputEventMouseButton) -> void:
 	# - Left drag draws
 	# - Right drag erases
 	# - Middle drag scrolls
+	if _is_emulated_mouse(e):
+		if e.pressed:
+			var is_styl = _mouse_event_is_stylus(e)
+			if is_styl:
+				_start_mouse_draw(e.position)
+			else:
+				_start_mouse_erase(e.position)
+			_emit_touch_state(e, is_styl)
+			return
+		else:
+			if _pointers.has(MOUSE_DRAW_ID):
+				_stop_mouse_draw()
+			if _pointers.has(MOUSE_ERASE_ID):
+				_stop_mouse_erase()
+			_emit_touch_state(e, _mouse_event_is_stylus(e))
+			return
 	if debug_input:
 		print("[InkCanvas] mouse button %s pressed=%s pos=%s" % [str(e.button_index), str(e.pressed), str(e.position)])
 	if e.pressed:
@@ -306,15 +360,52 @@ func _handle_mouse_button(e: InputEventMouseButton) -> void:
 			return
 		if e.button_index == MOUSE_BUTTON_LEFT:
 			_stop_mouse_draw()
+			queue_redraw()
 			_emit_touch_state(e, true)
 			return
 		if e.button_index == MOUSE_BUTTON_RIGHT:
 			_stop_mouse_erase()
+			queue_redraw()
 			_emit_touch_state(e, false)
 			return
 
 func _handle_mouse_motion(e: InputEventMouseMotion) -> void:
 	# Desktop testing convenience: implement if desired
+	if _is_emulated_mouse(e):
+		var is_styl = _mouse_event_is_stylus(e)
+		if (e.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+			if is_styl:
+				if not _pointers.has(MOUSE_DRAW_ID):
+					_start_mouse_draw(e.position)
+			else:
+				if not _pointers.has(MOUSE_ERASE_ID):
+					_start_mouse_erase(e.position)
+
+		_update_mouse_pointers(e.position)
+		_emit_touch_state(e, is_styl)
+
+		var old_mode = _mode
+		_update_mode()
+		if old_mode == "draw" and _mode == "scroll":
+			_finish_active_stroke()
+
+		if _mode == "scroll":
+			_scroll_by_two_fingers()
+			queue_redraw()
+			_update_debug_label()
+			return
+
+		if _mode == "draw":
+			_continue_active_stroke_mouse(MOUSE_DRAW_ID, e.position, _mouse_event_pressure(e))
+			queue_redraw()
+			_update_debug_label()
+			return
+
+		if _mode == "erase":
+			_erase_at_screen_pos(e.position)
+			queue_redraw()
+			_update_debug_label()
+			return
 	if debug_input:
 		print("[InkCanvas] mouse motion pos=%s rel=%s" % [str(e.position), str(e.relative)])
 	if _pointers.is_empty():
@@ -724,6 +815,10 @@ func _start_mouse_draw(pos: Vector2) -> void:
 
 func _stop_mouse_draw() -> void:
 	if _pointers.has(MOUSE_DRAW_ID):
+		if _mode == "draw" and _active_stylus_index == MOUSE_DRAW_ID and _active_stroke.get("points", []).size() == 1:
+			var pos = _pointers[MOUSE_DRAW_ID]["pos"]
+			var doc = _screen_to_doc(pos)
+			_add_point_to_stroke(_active_stroke, doc, {"pressure": 1.0}, float(Time.get_unix_time_from_system()))
 		_pointers.erase(MOUSE_DRAW_ID)
 	if _mode == "draw" and _active_stylus_index == MOUSE_DRAW_ID:
 		_finish_active_stroke()
@@ -804,6 +899,194 @@ func _event_position_string(event: InputEvent) -> String:
 	if event is InputEventMouseMotion:
 		return str(event.position)
 	return "n/a"
+
+func _poll_android_raw_input() -> void:
+	if _raw_input == null:
+		_emit_raw_status("singleton_missing")
+		return
+	var events = _raw_input.poll_events()
+	if events == null:
+		_emit_raw_status("poll_null")
+		return
+	var now = Time.get_ticks_msec()
+	if events.size() == 0:
+		if _raw_input_active and now - _last_raw_event_msec > 500:
+			_raw_input_active = false
+		var status = "no_events"
+		if _raw_input.has_method("get_status"):
+			status = "no_events:" + str(_raw_input.get_status())
+		_emit_raw_status(status)
+		return
+	_raw_input_active = true
+	_last_raw_event_msec = now
+	for e in events:
+		if typeof(e) != TYPE_DICTIONARY:
+			continue
+		_handle_raw_event(e)
+
+func _emit_raw_status(status: String) -> void:
+	var now = Time.get_ticks_msec()
+	if now - _last_raw_status_emit_msec < 1000:
+		return
+	_last_raw_status_emit_msec = now
+	var state = {
+		"event_class": "RawStatus",
+		"device": "android_raw",
+		"status": status,
+		"raw_active": _raw_input_active,
+	}
+	emit_signal("touch_state_changed", state)
+
+func _handle_raw_event(e: Dictionary) -> void:
+	var action = int(e.get("action", -1))
+	var pointer_id = int(e.get("pointer_id", -1))
+	var is_action_index = bool(e.get("is_action_index", true))
+	var tool = int(e.get("tool", RAW_TOOL_TYPE_FINGER))
+	var raw_pos = Vector2(float(e.get("x", 0.0)), float(e.get("y", 0.0)))
+	var pos = _raw_to_local(raw_pos)
+	var pressure = float(e.get("pressure", 0.0))
+	var tilt = float(e.get("tilt", 0.0))
+	var is_styl = _raw_is_stylus(tool, pressure, tilt)
+
+	if (action == RAW_ACTION_DOWN or action == RAW_ACTION_POINTER_DOWN) and not is_action_index:
+		return
+	if (action == RAW_ACTION_UP or action == RAW_ACTION_POINTER_UP) and not is_action_index:
+		return
+
+	if action == RAW_ACTION_DOWN or action == RAW_ACTION_POINTER_DOWN:
+		_pointers[pointer_id] = {
+			"pos": pos,
+			"last_pos": pos,
+			"is_stylus": is_styl,
+		}
+		if _mode == "draw" and _active_stylus_index != INVALID_POINTER_ID and not is_styl:
+			_pointers.erase(pointer_id)
+			_emit_raw_state(e, is_styl, "down_ignored")
+			return
+		_update_mode()
+		_begin_mode_if_needed()
+		_emit_raw_state(e, is_styl, "down")
+		return
+
+	if action == RAW_ACTION_UP or action == RAW_ACTION_POINTER_UP or action == RAW_ACTION_CANCEL:
+		_emit_raw_state(e, is_styl, "up")
+		if pointer_id == _active_stylus_index and _mode == "draw":
+			if _active_stroke.get("points", []).size() == 1:
+				var doc = _screen_to_doc(pos)
+				_add_point_to_stroke(_active_stroke, doc, {"pressure": pressure}, float(Time.get_unix_time_from_system()))
+			_finish_active_stroke()
+		if _pointers.has(pointer_id):
+			_pointers.erase(pointer_id)
+		_update_mode()
+		queue_redraw()
+		return
+
+	if action == RAW_ACTION_MOVE:
+		if not _pointers.has(pointer_id):
+			return
+		_pointers[pointer_id]["last_pos"] = _pointers[pointer_id]["pos"]
+		_pointers[pointer_id]["pos"] = pos
+		_pointers[pointer_id]["is_stylus"] = is_styl
+		var old_mode = _mode
+		_update_mode()
+		if old_mode == "draw" and _mode == "scroll":
+			_finish_active_stroke()
+		if _mode == "scroll":
+			_scroll_by_two_fingers()
+			queue_redraw()
+			_emit_raw_state(e, is_styl, "move_scroll")
+			return
+		if _mode == "draw":
+			_continue_active_stroke_raw(pointer_id, pos, pressure)
+			queue_redraw()
+			_emit_raw_state(e, is_styl, "move_draw")
+			return
+		if _mode == "erase":
+			_erase_at_screen_pos(pos)
+			queue_redraw()
+			_emit_raw_state(e, is_styl, "move_erase")
+			return
+
+func _continue_active_stroke_raw(pointer_id: int, screen_pos: Vector2, pressure: float) -> void:
+	if _active_stroke.is_empty():
+		_start_active_stroke()
+		return
+	if pointer_id != _active_stylus_index:
+		return
+	var doc = _screen_to_doc(screen_pos)
+	_add_point_to_stroke(_active_stroke, doc, {"pressure": pressure}, float(Time.get_unix_time_from_system()))
+	if debug_input and _active_stroke["points"].size() == 2:
+		print("[InkCanvas] raw stroke started id=%s" % _active_stroke.get("id", ""))
+	_max_doc_y = max(_max_doc_y, doc.y + bottom_padding_px)
+
+func _raw_is_stylus(tool: int, pressure: float, tilt: float) -> bool:
+	if tool == RAW_TOOL_TYPE_STYLUS or tool == RAW_TOOL_TYPE_ERASER:
+		return true
+	if tool == RAW_TOOL_TYPE_FINGER:
+		return false
+	if tilt > stylus_tilt_threshold:
+		return true
+	if stylus_use_pressure and pressure > stylus_pressure_threshold:
+		return true
+	return false
+
+func _emit_raw_state(raw: Dictionary, is_stylus: bool, phase: String) -> void:
+	var counts = _count_pointer_types()
+	var state = {
+		"event_class": "RawMotionEvent",
+		"device": "android_raw",
+		"phase": phase,
+		"index": int(raw.get("pointer_id", -1)),
+		"position": _raw_to_local(Vector2(float(raw.get("x", 0.0)), float(raw.get("y", 0.0)))),
+		"raw_position": Vector2(float(raw.get("x", 0.0)), float(raw.get("y", 0.0))),
+		"pressure": float(raw.get("pressure", 0.0)),
+		"tilt": float(raw.get("tilt", 0.0)),
+		"tool": int(raw.get("tool", RAW_TOOL_TYPE_FINGER)),
+		"is_stylus": is_stylus,
+		"mode": _mode,
+		"active_stylus_index": _active_stylus_index,
+		"stylus_count": counts["stylus"],
+		"finger_count": counts["finger"],
+		"strokes_count": strokes.size(),
+		"active_points": _active_stroke.get("points", []).size(),
+		"scroll_y": _scroll_y,
+		"raw": raw,
+	}
+	emit_signal("touch_state_changed", state)
+
+func _raw_to_local(raw_pos: Vector2) -> Vector2:
+	return get_global_transform_with_canvas().affine_inverse() * raw_pos
+
+func _is_emulated_mouse(e: InputEvent) -> bool:
+	if not e.has_method("is_emulated"):
+		return false
+	return e.is_emulated()
+
+func _mouse_event_pressure(e: InputEvent) -> float:
+	var p := 0.0
+	if e.has_method("get_pressure"):
+		p = e.get_pressure()
+	if treat_nan_pressure_as_finger and is_nan(p):
+		p = 0.0
+	return p
+
+func _mouse_event_is_stylus(e: InputEvent) -> bool:
+	var pressure = _mouse_event_pressure(e)
+	var tilt := Vector2.ZERO
+	if e.has_method("get_tilt"):
+		tilt = e.get_tilt()
+	var pen_inverted = false
+	if e.has_method("get_pen_inverted"):
+		pen_inverted = e.get_pen_inverted()
+	elif e.has_method("is_pen_inverted"):
+		pen_inverted = e.is_pen_inverted()
+	if pen_inverted:
+		return true
+	if tilt.length() > stylus_tilt_threshold:
+		return true
+	if pressure > stylus_pressure_threshold:
+		return true
+	return false
 
 
 func _color_to_html(c: Color) -> String:
@@ -1006,6 +1289,12 @@ func _draw() -> void:
 	if not _active_stroke.is_empty():
 		_draw_stroke(_active_stroke, page_left)
 
+	# Draw eraser preview when erasing
+	if _mode == "erase":
+		var erase_pos = _get_erase_preview_pos()
+		if erase_pos != null:
+			draw_circle(erase_pos, eraser_radius_px, ERASER_PREVIEW_COLOR)
+
 func _draw_stroke(stroke: Dictionary, page_left: float) -> void:
 	var pts = stroke.get("points", [])
 	var thickness = float(stroke.get("thickness", pen_thickness))
@@ -1039,6 +1328,9 @@ func _draw_stroke(stroke: Dictionary, page_left: float) -> void:
 		var sy = y - _scroll_y
 		screen_pts[i] = Vector2(sx, sy)
 
+	if stroke_smoothing_enabled:
+		screen_pts = _smooth_screen_points(screen_pts, stroke_smoothing_window)
+
 	# Cheap y-cull: if entirely out of view, skip
 	var min_y = INF
 	var max_y = -INF
@@ -1049,6 +1341,10 @@ func _draw_stroke(stroke: Dictionary, page_left: float) -> void:
 		return
 
 	draw_polyline(screen_pts, color, thickness, true)
+	if screen_pts.size() >= 2:
+		var cap_r = max(1.0, thickness * 0.5)
+		draw_circle(screen_pts[0], cap_r, color)
+		draw_circle(screen_pts[screen_pts.size() - 1], cap_r, color)
 	if debug_input and stroke == _active_stroke and screen_pts.size() > 0:
 		draw_circle(screen_pts[screen_pts.size() - 1], 4.0, Color(0, 1, 0, 0.8))
 
@@ -1061,6 +1357,36 @@ func _screen_to_doc(screen_pos: Vector2) -> Vector2:
 	var x = clamp(screen_pos.x - page_left, side_margin_px, page_width_px - side_margin_px)
 	var y = screen_pos.y + _scroll_y
 	return Vector2(x, y)
+
+func _smooth_screen_points(points: PackedVector2Array, window: int) -> PackedVector2Array:
+	if points.size() < 3:
+		return points
+	var w = max(3, window)
+	if (w % 2) == 0:
+		w += 1
+	var half = w / 2
+	var out = PackedVector2Array()
+	out.resize(points.size())
+	out[0] = points[0]
+	out[points.size() - 1] = points[points.size() - 1]
+	for i in range(1, points.size() - 1):
+		var sum = Vector2.ZERO
+		var count = 0
+		for j in range(i - half, i + half + 1):
+			if j < 0 or j >= points.size():
+				continue
+			sum += points[j]
+			count += 1
+		out[i] = sum / float(count)
+	return out
+
+func _get_erase_preview_pos() -> Variant:
+	# Prefer the only finger pointer if present.
+	for idx in _pointers.keys():
+		var p = _pointers[idx]
+		if not p.get("is_stylus", false):
+			return p.get("pos", null)
+	return null
 
 # -----------------------------
 # Undo/Redo internals

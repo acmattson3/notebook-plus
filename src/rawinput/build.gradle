@@ -1,0 +1,36 @@
+plugins {
+    id "com.android.library"
+    id "org.jetbrains.kotlin.android"
+}
+
+android {
+    namespace "com.notebookplus.rawinput"
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 24
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+        debug {
+            minifyEnabled false
+        }
+    }
+}
+
+dependencies {
+    // Compile against the locally installed Godot Android template (not packaged into the AAR).
+    compileOnly files("$rootDir/../demo/android/build/libs/debug/godot-lib.template_debug.aar")
+}
