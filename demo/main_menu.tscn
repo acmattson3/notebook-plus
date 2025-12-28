@@ -1,12 +1,19 @@
-[gd_scene load_steps=5 format=3 uid="uid://cxxigkblt2pi1"]
+[gd_scene load_steps=8 format=3 uid="uid://cxxigkblt2pi1"]
 
 [ext_resource type="Script" uid="uid://rnki3php8m7i" path="res://main_menu.gd" id="1_7vrkn"]
-[ext_resource type="Texture2D" uid="uid://dmt5k2km347aq" path="res://NotebookPlusLogo.svg" id="2_7vrkn"]
+[ext_resource type="Texture2D" uid="uid://ccc6d4xmy61ph" path="res://NotebookPlusLogoBorderless.svg" id="2_fu7sn"]
+[ext_resource type="Texture2D" uid="uid://b6qcqqe1tg0n7" path="res://NotebookPlusPlus.svg" id="3_jix8l"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_7vrkn"]
 bg_color = Color(0, 0, 0, 1)
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_7vrkn"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_fu7sn"]
+bg_color = Color(0.3019608, 0.3372549, 0.34901962, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_nlkkf"]
+bg_color = Color(0.6, 1, 0.6, 0.5411765)
 
 [node name="MainMenu" type="PanelContainer"]
 anchors_preset = 15
@@ -41,13 +48,17 @@ size_flags_horizontal = 3
 
 [node name="TextureRect" type="TextureRect" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
-texture = ExtResource("2_7vrkn")
-expand_mode = 2
+texture = ExtResource("2_fu7sn")
+expand_mode = 3
 
-[node name="AppNameLabel" type="Label" parent="VBoxContainer/HBoxContainer"]
+[node name="AppNameLabel" type="RichTextLabel" parent="VBoxContainer/HBoxContainer"]
+custom_minimum_size = Vector2(450, 80)
 layout_mode = 2
-theme_override_font_sizes/font_size = 100
-text = "NotebookPlus"
+theme_override_font_sizes/normal_font_size = 64
+theme_override_font_sizes/bold_font_size = 64
+bbcode_enabled = true
+text = "[b]Notebook[color=#9FD94B]Plus[/color][/b]"
+scroll_active = false
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -55,12 +66,11 @@ vertical_alignment = 1
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="NewNotepageButton" type="Button" parent="VBoxContainer/HBoxContainer"]
+[node name="SettingsButton" type="Button" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 40
-text = "New
-Notepage"
+text = "Settings"
 
 [node name="Control5" type="Control" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
@@ -94,7 +104,7 @@ theme_override_styles/normal = SubResource("StyleBoxEmpty_7vrkn")
 text = "Date Modified"
 
 [node name="Spacer2" type="Control" parent="VBoxContainer/VBoxContainer/HBoxContainer"]
-custom_minimum_size = Vector2(100, 0)
+custom_minimum_size = Vector2(150, 0)
 layout_mode = 2
 
 [node name="DateCreatedSortButton" type="Button" parent="VBoxContainer/VBoxContainer/HBoxContainer"]
@@ -116,8 +126,32 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 
+[node name="HBoxContainer2" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="Control" type="Control" parent="VBoxContainer/HBoxContainer2"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="NewNotepageButton" type="Button" parent="VBoxContainer/HBoxContainer2"]
+custom_minimum_size = Vector2(200, 200)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_fu7sn")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_nlkkf")
+icon = ExtResource("3_jix8l")
+icon_alignment = 1
+expand_icon = true
+
+[node name="Control2" type="Control" parent="VBoxContainer/HBoxContainer2"]
+custom_minimum_size = Vector2(50, 0)
+layout_mode = 2
+
+[node name="Control" type="Control" parent="VBoxContainer"]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+
 [connection signal="pressed" from="VBoxContainer/HBoxContainer/ExitButton" to="." method="_on_exit_button_pressed"]
-[connection signal="pressed" from="VBoxContainer/HBoxContainer/NewNotepageButton" to="." method="_on_new_notepage_button_pressed"]
 [connection signal="pressed" from="VBoxContainer/VBoxContainer/HBoxContainer/TitleSortButton" to="." method="_on_title_sort_button_pressed"]
 [connection signal="pressed" from="VBoxContainer/VBoxContainer/HBoxContainer/DateModifiedSortButton" to="." method="_on_date_modified_sort_button_pressed"]
 [connection signal="pressed" from="VBoxContainer/VBoxContainer/HBoxContainer/DateCreatedSortButton" to="." method="_on_date_created_sort_button_pressed"]
+[connection signal="pressed" from="VBoxContainer/HBoxContainer2/NewNotepageButton" to="." method="_on_new_notepage_button_pressed"]

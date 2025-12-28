@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://xo7ak1blw8a8" path="res://notepage_button.gd" id="1_drg7l"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ru705"]
-bg_color = Color(0.057375185, 0.057375215, 0.057375178, 1)
+bg_color = Color(0.19215687, 0.22745098, 0.23921569, 1)
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_drg7l"]
 

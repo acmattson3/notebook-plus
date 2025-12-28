@@ -22,11 +22,17 @@ config/icon="res://NotebookPlusLogo.png"
 
 window/size/viewport_width=1600
 window/size/viewport_height=2560
+window/size/mode=2
 window/handheld/orientation=1
 
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/notebookplus_raw_input/plugin.cfg")
+
+[gui]
+
+theme/custom="uid://blanmikdfin25"
+theme/custom_font="uid://b78252y2bc78y"
 
 [rendering]
 
