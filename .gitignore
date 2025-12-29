@@ -9,3 +9,4 @@
 /src/rawinput/build/
 /src/local.properties
 /demo/addons/notebookplus_raw_input/bin/*.aar
+*.zip
