@@ -16,7 +16,7 @@ signal touch_state_changed(state: Dictionary)
 @export var side_margin_px: float = 0.0
 
 @export var pen_color: Color = Color(1, 1, 1, 1)
-@export var pen_thickness: float = 5.0
+@export var pen_thickness: float = 2.0
 
 @export var eraser_radius_px: float = 18.0
 @export var scroll_clamp_top: float = 0.0
@@ -39,6 +39,7 @@ signal touch_state_changed(state: Dictionary)
 @export var use_tile_cache: bool = true
 @export var show_tile_debug_overlay: bool = false
 @export var tile_cache_to_disk: bool = false
+@export var tile_cache_capsule_raster: bool = false
 
 # -----------------------------
 # Internal state
@@ -75,6 +76,8 @@ var _active_stroke: Dictionary = {}
 
 var _mouse_scroll_active: bool = false
 var _debug_label: Label = null
+@onready var _status_label: Label = %DebugLabel
+@export var debug_raw_status: bool = false
 var _raw_input: Object = null
 var _raw_input_active: bool = false
 var _last_raw_event_msec: int = 0
@@ -94,6 +97,7 @@ var _stroke_to_tiles: Dictionary = {}
 var _tile_cache_dirty: bool = true
 var _tile_cache_note_id: String = ""
 var _tile_cache_manifest_dirty: bool = false
+var _ui_scale_factor: float = 1.0
 
 # Android MotionEvent constants (subset)
 const RAW_ACTION_DOWN := 0
@@ -113,8 +117,10 @@ const RAW_TOOL_TYPE_ERASER := 4
 # -----------------------------
 func _ready() -> void:
 	EventBus.cache_tile_size_updated.connect(set_tile_size_px)
+	EventBus.ui_scale_updated.connect(_apply_ui_scale_override)
 	var saved_tile_size = int(EventBus.get_setting("tile_size", _tile_size_px))
 	set_tile_size_px(saved_tile_size)
+	_apply_ui_scale_override(float(EventBus.get_setting("ui_scale", 1.0)))
 	EventBus.toggle_debug_lines.connect(_on_toggle_debug_lines)
 	
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -127,6 +133,10 @@ func _ready() -> void:
 		_emit_raw_status("singleton_loaded")
 		if _raw_input != null and _raw_input.has_method("clear_events"):
 			_raw_input.clear_events()
+		if _raw_input != null:
+			_raw_input.set_recording_enabled(true)
+			_raw_input.set_active(true)
+		set_raw_input_active(true)
 	if OS.is_debug_build():
 		_debug_label = Label.new()
 		_debug_label.name = "InputDebug"
@@ -136,13 +146,34 @@ func _ready() -> void:
 		_debug_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.8))
 		add_child(_debug_label)
 	queue_redraw()
+	visibility_changed.connect(_on_visibility_changed)
 
 func _on_toggle_debug_lines(showing: bool) -> void:
 	show_tile_debug_overlay = showing
 	queue_redraw()
 
 func _process(_delta: float) -> void:
+	_try_init_raw_input()
 	_poll_android_raw_input()
+	_ensure_ui_scale_override()
+
+func _enter_tree() -> void:
+	set_raw_input_active(true)
+
+func _exit_tree() -> void:
+	set_raw_input_active(false)
+
+func _on_visibility_changed() -> void:
+	set_raw_input_active(is_visible_in_tree())
+
+func _apply_ui_scale_override(new_scale: float) -> void:
+	_ui_scale_factor = max(0.01, new_scale)
+	_ensure_ui_scale_override()
+
+func _ensure_ui_scale_override() -> void:
+	var target = Vector2(1.0 / _ui_scale_factor, 1.0 / _ui_scale_factor)
+	if scale != target:
+		scale = target
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED and debug_input:
@@ -1010,10 +1041,14 @@ func _poll_android_raw_input() -> void:
 			_raw_input.clear_events()
 		return
 	if _raw_input == null:
+		if debug_raw_status and _status_label:
+			_status_label.text = "raw: singleton_missing"
 		_emit_raw_status("singleton_missing")
 		return
 	var events = _raw_input.poll_events()
 	if events == null:
+		if debug_raw_status and _status_label:
+			_status_label.text = "raw: poll_null"
 		_emit_raw_status("poll_null")
 		return
 	var now = Time.get_ticks_msec()
@@ -1023,10 +1058,17 @@ func _poll_android_raw_input() -> void:
 		var status = "no_events"
 		if _raw_input.has_method("get_status"):
 			status = "no_events:" + str(_raw_input.get_status())
+		else:
+			status = "no_events:no_status_method active=" + str(_raw_input.has_method("set_active")) + " rec=" + str(_raw_input.has_method("set_recording_enabled"))
+		if debug_raw_status and _status_label:
+			var stamp = str(Time.get_ticks_msec() % 100000)
+			_status_label.text = "raw: %s v=debug2 t=%s" % [status, stamp]
 		_emit_raw_status(status)
 		return
 	_raw_input_active = true
 	_last_raw_event_msec = now
+	if debug_raw_status and _status_label and _raw_input.has_method("get_status"):
+		_status_label.text = "raw: " + str(_raw_input.get_status())
 	for e in events:
 		if typeof(e) != TYPE_DICTIONARY:
 			continue
@@ -1188,6 +1230,28 @@ func _emit_raw_state(raw: Dictionary, is_stylus: bool, phase: String) -> void:
 
 func _raw_to_local(raw_pos: Vector2) -> Vector2:
 	return get_global_transform_with_canvas().affine_inverse() * raw_pos
+
+func _try_init_raw_input() -> void:
+	if _raw_input != null:
+		return
+	if not use_android_raw_input:
+		return
+	if not Engine.has_singleton("NotebookPlusRawInput"):
+		return
+	_raw_input = Engine.get_singleton("NotebookPlusRawInput")
+	if _raw_input == null:
+		return
+	_emit_raw_status("singleton_loaded")
+	if _raw_input.has_method("clear_events"):
+		_raw_input.clear_events()
+	_raw_input.set_recording_enabled(true)
+	_raw_input.set_active(true)
+	set_raw_input_active(true)
+
+func set_raw_input_active(active: bool) -> void:
+	if _raw_input == null:
+		return
+	_raw_input.set_active(active)
 
 func _is_emulated_mouse(e: InputEvent) -> bool:
 	if not e.has_method("is_emulated"):
@@ -1624,16 +1688,20 @@ func _stroke_color(stroke: Dictionary) -> Color:
 	return pen_color
 
 func _rasterize_line_into_image(image: Image, a: Vector2, b: Vector2, color: Color, thickness: int) -> void:
+	var radius = max(1.0, float(thickness) * 0.5)
 	var dist = a.distance_to(b)
 	if dist <= 0.001:
-		_draw_circle_image(image, a, max(1.0, float(thickness) * 0.5), color)
+		_draw_circle_image(image, a, radius, color)
 		return
-	var step = max(1.0, float(thickness) * 0.5)
+	if tile_cache_capsule_raster:
+		_draw_capsule_image(image, a, b, radius, color)
+		return
+	var step = max(1.0, radius)
 	var steps = int(ceil(dist / step))
 	for i in range(steps + 1):
 		var t = float(i) / float(steps)
 		var p = a.lerp(b, t)
-		_draw_circle_image(image, p, max(1.0, float(thickness) * 0.5), color)
+		_draw_circle_image(image, p, radius, color)
 
 func _draw_circle_image(image: Image, center: Vector2, radius: float, color: Color) -> void:
 	var r = int(ceil(radius))
@@ -1651,6 +1719,24 @@ func _draw_circle_image(image: Image, center: Vector2, radius: float, color: Col
 		for x in range(min_x, max_x + 1):
 			var dx = float(x - cx)
 			if dx * dx + dy * dy <= r2:
+				image.set_pixel(x, y, color)
+
+func _draw_capsule_image(image: Image, a: Vector2, b: Vector2, radius: float, color: Color) -> void:
+	var r = max(1.0, radius)
+	var min_x = int(floor(min(a.x, b.x) - r))
+	var max_x = int(ceil(max(a.x, b.x) + r))
+	var min_y = int(floor(min(a.y, b.y) - r))
+	var max_y = int(ceil(max(a.y, b.y) + r))
+	min_x = clamp(min_x, 0, image.get_width() - 1)
+	max_x = clamp(max_x, 0, image.get_width() - 1)
+	min_y = clamp(min_y, 0, image.get_height() - 1)
+	max_y = clamp(max_y, 0, image.get_height() - 1)
+	var r2 = r * r
+	for y in range(min_y, max_y + 1):
+		var py = float(y) + 0.5
+		for x in range(min_x, max_x + 1):
+			var px = float(x) + 0.5
+			if _dist2_point_to_segment(Vector2(px, py), a, b) <= r2:
 				image.set_pixel(x, y, color)
 
 func _compute_strokes_hash() -> String:

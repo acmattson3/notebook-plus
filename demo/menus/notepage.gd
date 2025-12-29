@@ -8,7 +8,6 @@ var _modified_ts: int = 0
 var _dirty: bool = false
 var _autosave_timer: Timer
 var _pending_note: Dictionary = {}
-var _debugging: bool = false
 
 @onready var _title_text: TextEdit = %TitleTextEdit
 
@@ -23,10 +22,10 @@ func _ready() -> void:
 		ink_canvas.dirty_changed.connect(_on_canvas_dirty_changed)
 		ink_canvas.strokes_changed.connect(_on_canvas_strokes_changed)
 		ink_canvas.gui_input.connect(_on_ink_canvas_gui_input)
-		if not ink_canvas.touch_state_changed.is_connected(_on_ink_canvas_touch_state_changed):
-			ink_canvas.touch_state_changed.connect(_on_ink_canvas_touch_state_changed)
 		ink_canvas.reset_input_state()
 		_enable_raw_input_recording()
+	if $SettingsMenu:
+		$SettingsMenu.visibility_changed.connect(_on_settings_menu_visibility_changed)
 
 	if _title_text:
 		_title_text.text_changed.connect(_on_title_changed)
@@ -162,18 +161,22 @@ func _on_exit_button_pressed() -> void:
 	root.add_child(instance)
 	tree.current_scene = instance
 
-func _on_ink_canvas_touch_state_changed(state: Dictionary) -> void:
-	if not _debugging:
-		return
-	%DebugLabel.text = ""
-	for key in state.keys():
-		%DebugLabel.text += str(key) + ": " + str(state[key]) + ";  "
-
 func _enable_raw_input_recording() -> void:
 	if Engine.has_singleton("NotebookPlusRawInput"):
 		var raw: Object = Engine.get_singleton("NotebookPlusRawInput")
-		if raw != null and raw.has_method("set_recording_enabled"):
+		if raw != null:
 			raw.set_recording_enabled(true)
+			raw.set_active(true)
+	if ink_canvas:
+		ink_canvas.set_raw_input_active(true)
+
+func _on_settings_menu_visibility_changed() -> void:
+	if not ink_canvas:
+		return
+	if $SettingsMenu.visible:
+		ink_canvas.set_raw_input_active(false)
+	else:
+		ink_canvas.set_raw_input_active(true)
 
 func _on_thickness_slider_value_changed(value: float) -> void:
 	ink_canvas.set_pen_thickness(value)

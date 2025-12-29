@@ -232,8 +232,9 @@ func _clear_raw_input_cache() -> void:
 func _disable_raw_input_recording() -> void:
 	if Engine.has_singleton("NotebookPlusRawInput"):
 		var raw: Object = Engine.get_singleton("NotebookPlusRawInput")
-		if raw != null and raw.has_method("set_recording_enabled"):
+		if raw != null:
 			raw.set_recording_enabled(false)
+			raw.set_active(false)
 
 func _on_new_notepage_button_pressed() -> void:
 	_clear_raw_input_cache()

@@ -8,4 +8,4 @@ func _supports_platform(platform: EditorExportPlatform) -> bool:
 	return platform is EditorExportPlatformAndroid
 
 func _get_android_libraries(_platform: EditorExportPlatform, _debug: bool) -> PackedStringArray:
-	return PackedStringArray(["res://addons/notebookplus_raw_input/bin/notebookplus_raw_input.aar"])
+	return PackedStringArray(["res://addons/notebookplus_raw_input/bin/notebookplus_raw_input_v2.aar"])

@@ -126,29 +126,23 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="HBoxContainer2" type="HBoxContainer" parent="VBoxContainer"]
+[node name="MarginContainer" type="MarginContainer" parent="."]
 layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+theme_override_constants/margin_right = 50
+theme_override_constants/margin_bottom = 50
 
-[node name="Control" type="Control" parent="VBoxContainer/HBoxContainer2"]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="NewNotepageButton" type="Button" parent="VBoxContainer/HBoxContainer2"]
+[node name="NewNotepageButton" type="Button" parent="MarginContainer"]
 custom_minimum_size = Vector2(200, 200)
 layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
 theme_override_styles/normal = SubResource("StyleBoxFlat_fu7sn")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_nlkkf")
 icon = ExtResource("3_jix8l")
 icon_alignment = 1
 expand_icon = true
-
-[node name="Control2" type="Control" parent="VBoxContainer/HBoxContainer2"]
-custom_minimum_size = Vector2(50, 0)
-layout_mode = 2
-
-[node name="Control" type="Control" parent="VBoxContainer"]
-custom_minimum_size = Vector2(0, 50)
-layout_mode = 2
 
 [node name="SettingsMenu" parent="." instance=ExtResource("4_rqbgu")]
 visible = false
@@ -159,4 +153,4 @@ layout_mode = 2
 [connection signal="pressed" from="VBoxContainer/VBoxContainer/HBoxContainer/TitleSortButton" to="." method="_on_title_sort_button_pressed"]
 [connection signal="pressed" from="VBoxContainer/VBoxContainer/HBoxContainer/DateModifiedSortButton" to="." method="_on_date_modified_sort_button_pressed"]
 [connection signal="pressed" from="VBoxContainer/VBoxContainer/HBoxContainer/DateCreatedSortButton" to="." method="_on_date_created_sort_button_pressed"]
-[connection signal="pressed" from="VBoxContainer/HBoxContainer2/NewNotepageButton" to="." method="_on_new_notepage_button_pressed"]
+[connection signal="pressed" from="MarginContainer/NewNotepageButton" to="." method="_on_new_notepage_button_pressed"]

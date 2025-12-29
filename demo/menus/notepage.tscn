@@ -151,16 +151,8 @@ custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 color = Color(0.05882353, 0.05882353, 0.05882353, 1)
 
-[node name="DebugLabel" type="Label" parent="MainContainer/TopBarContainer"]
-unique_name_in_owner = true
-visible = false
-layout_mode = 2
-text = "Jones BBQ and Foot Massage"
-autowrap_mode = 2
-
 [node name="InkCanvas" parent="MainContainer" instance=ExtResource("1_2o28d")]
 layout_mode = 2
-size_flags_horizontal = 1
 
 [node name="SettingsMenu" parent="." instance=ExtResource("3_c8q2x")]
 visible = false

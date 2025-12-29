@@ -13,3 +13,11 @@ grow_vertical = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 script = ExtResource("1_jc6h3")
+
+[node name="DebugLabel" type="Label" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 24.0
+text = "Jones BBQ and Foot Massage"
