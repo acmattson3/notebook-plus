@@ -1,7 +1,7 @@
 extends PanelContainer
 
 @onready var notepage_button_container: VBoxContainer = %NotepageButtonVBox
-@onready var _notepage_button_scene: PackedScene = preload("res://notepage_button.tscn")
+@onready var _notepage_button_scene: PackedScene = preload("res://controls/notepage_button.tscn")
 
 const SORT_TITLE := "title"
 const SORT_MODIFIED := "modified"
@@ -19,7 +19,7 @@ func _reload_notepage_list() -> void:
 	for child in notepage_button_container.get_children():
 		child.queue_free()
 
-	var notes = _load_notes()
+	var notes: Array = _load_notes()
 	for n in notes:
 		var button: NotepageButton = _notepage_button_scene.instantiate()
 		button.configure(
@@ -95,7 +95,36 @@ func _on_notepage_delete_requested(_note_id: String, file_path: String) -> void:
 		return
 	if FileAccess.file_exists(file_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(file_path))
+	_delete_tile_cache_for_note(_note_id)
 	_reload_notepage_list()
+
+func _delete_tile_cache_for_note(note_id: String) -> void:
+	if note_id == "":
+		return
+	var base = "user://tile_cache/%s" % note_id
+	var dir = DirAccess.open(base)
+	if not dir:
+		return
+	_delete_dir_recursive(base)
+
+func _delete_dir_recursive(path: String) -> void:
+	var dir = DirAccess.open(path)
+	if not dir:
+		return
+	dir.list_dir_begin()
+	var file = dir.get_next()
+	while file != "":
+		if file == "." or file == "..":
+			file = dir.get_next()
+			continue
+		var full = path.path_join(file)
+		if dir.current_is_dir():
+			_delete_dir_recursive(full)
+		else:
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(full))
+		file = dir.get_next()
+	dir.list_dir_end()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 func _on_notepage_duplicate_requested(_note_id: String, file_path: String) -> void:
 	if file_path == "":
@@ -119,14 +148,14 @@ func _on_notepage_open_requested(_note_id: String, file_path: String) -> void:
 	var note = _load_note_dict(file_path)
 	if note.is_empty():
 		return
-	var scene: PackedScene = load("res://notepage.tscn")
+	var scene: PackedScene = load("res://menus/notepage.tscn")
 	if not scene:
 		return
-	var instance = scene.instantiate()
+	var instance: Node = scene.instantiate()
 	if instance.has_method("load_note"):
 		instance.load_note(note)
-	var tree = get_tree()
-	var root = tree.root
+	var tree: SceneTree = get_tree()
+	var root: Window = tree.root
 	if tree.current_scene:
 		tree.current_scene.queue_free()
 	root.add_child(instance)
@@ -184,7 +213,7 @@ func _sort_buttons_by_created(ascending: bool) -> void:
 	_apply_sorted_buttons(buttons)
 
 func _collect_buttons() -> Array:
-	var buttons: Array = []
+	var buttons: Array[NotepageButton] = []
 	for child in notepage_button_container.get_children():
 		if child is NotepageButton:
 			buttons.append(child)
@@ -196,24 +225,24 @@ func _apply_sorted_buttons(buttons: Array) -> void:
 
 func _clear_raw_input_cache() -> void:
 	if Engine.has_singleton("NotebookPlusRawInput"):
-		var raw = Engine.get_singleton("NotebookPlusRawInput")
+		var raw: Object = Engine.get_singleton("NotebookPlusRawInput")
 		if raw != null and raw.has_method("clear_events"):
 			raw.clear_events()
 
 func _disable_raw_input_recording() -> void:
 	if Engine.has_singleton("NotebookPlusRawInput"):
-		var raw = Engine.get_singleton("NotebookPlusRawInput")
+		var raw: Object = Engine.get_singleton("NotebookPlusRawInput")
 		if raw != null and raw.has_method("set_recording_enabled"):
 			raw.set_recording_enabled(false)
 
 func _on_new_notepage_button_pressed() -> void:
 	_clear_raw_input_cache()
-	var scene: PackedScene = load("res://notepage.tscn")
+	var scene: PackedScene = load("res://menus/notepage.tscn")
 	if not scene:
 		return
-	var instance = scene.instantiate()
-	var tree = get_tree()
-	var root = tree.root
+	var instance: Node = scene.instantiate()
+	var tree: SceneTree = get_tree()
+	var root: Window = tree.root
 	if tree.current_scene:
 		tree.current_scene.queue_free()
 	root.add_child(instance)
@@ -221,3 +250,6 @@ func _on_new_notepage_button_pressed() -> void:
 
 func _on_exit_button_pressed() -> void:
 	get_tree().quit()
+
+func _on_settings_button_pressed() -> void:
+	$SettingsMenu.show()

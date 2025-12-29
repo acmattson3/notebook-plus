@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3 uid="uid://bmm0uphw32iq7"]
+[gd_scene load_steps=4 format=3 uid="uid://bmm0uphw32iq7"]
 
-[ext_resource type="PackedScene" uid="uid://cie461xkyn7m7" path="res://ink_canvas.tscn" id="1_2o28d"]
-[ext_resource type="Script" uid="uid://bjesq1tslhg8k" path="res://notepage.gd" id="1_yq5pd"]
+[ext_resource type="PackedScene" uid="uid://cie461xkyn7m7" path="res://controls/ink_canvas.tscn" id="1_2o28d"]
+[ext_resource type="Script" uid="uid://bjesq1tslhg8k" path="res://menus/notepage.gd" id="1_yq5pd"]
+[ext_resource type="PackedScene" uid="uid://c4vi7iyeaccik" path="res://menus/settings_menu.tscn" id="3_c8q2x"]
 
 [node name="Notepage" type="PanelContainer" node_paths=PackedStringArray("ink_canvas")]
 anchors_preset = 15
@@ -25,12 +26,25 @@ size_flags_vertical = 3
 [node name="TopBarContainer" type="VBoxContainer" parent="MainContainer"]
 layout_mode = 2
 
-[node name="TitleTextEdit" type="TextEdit" parent="MainContainer/TopBarContainer"]
+[node name="HBoxContainer" type="HBoxContainer" parent="MainContainer/TopBarContainer"]
+layout_mode = 2
+
+[node name="TitleTextEdit" type="TextEdit" parent="MainContainer/TopBarContainer/HBoxContainer"]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 90)
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 48
+theme_type_variation = &"TitleTextBox"
 placeholder_text = "Unnamed Notepage"
+
+[node name="SettingsButton" type="Button" parent="MainContainer/TopBarContainer/HBoxContainer"]
+layout_mode = 2
+theme_type_variation = &"TitleButton"
+text = " Settings "
+
+[node name="Control" type="Control" parent="MainContainer/TopBarContainer/HBoxContainer"]
+custom_minimum_size = Vector2(20, 0)
+layout_mode = 2
 
 [node name="OptionContainer" type="HBoxContainer" parent="MainContainer/TopBarContainer"]
 layout_mode = 2
@@ -41,8 +55,8 @@ layout_mode = 2
 
 [node name="ExitButton" type="Button" parent="MainContainer/TopBarContainer/OptionContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 30
-text = "Save and Exit"
+theme_type_variation = &"HeaderButton"
+text = " Save and Exit "
 
 [node name="Control2" type="Control" parent="MainContainer/TopBarContainer/OptionContainer"]
 custom_minimum_size = Vector2(20, 0)
@@ -50,8 +64,8 @@ layout_mode = 2
 
 [node name="SaveButton" type="Button" parent="MainContainer/TopBarContainer/OptionContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 30
-text = "Save"
+theme_type_variation = &"HeaderButton"
+text = " Save "
 
 [node name="Control3" type="Control" parent="MainContainer/TopBarContainer/OptionContainer"]
 custom_minimum_size = Vector2(20, 0)
@@ -67,7 +81,7 @@ layout_mode = 2
 
 [node name="ColorPickerLabel" type="Label" parent="MainContainer/TopBarContainer/OptionContainer/ScrollContainer/HBoxContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_type_variation = &"HeaderLabel"
 text = "Color: "
 horizontal_alignment = 2
 
@@ -82,7 +96,7 @@ layout_mode = 2
 
 [node name="ThicknessLabel" type="Label" parent="MainContainer/TopBarContainer/OptionContainer/ScrollContainer/HBoxContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_type_variation = &"HeaderLabel"
 text = "Thickness: "
 horizontal_alignment = 2
 
@@ -99,7 +113,7 @@ layout_mode = 2
 
 [node name="EraserRadLabel" type="Label" parent="MainContainer/TopBarContainer/OptionContainer/ScrollContainer/HBoxContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_type_variation = &"HeaderLabel"
 text = "Eraser Size: "
 horizontal_alignment = 2
 
@@ -116,8 +130,8 @@ layout_mode = 2
 
 [node name="UndoButton" type="Button" parent="MainContainer/TopBarContainer/OptionContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 30
-text = "Undo"
+theme_type_variation = &"HeaderButton"
+text = " Undo "
 
 [node name="Control" type="Control" parent="MainContainer/TopBarContainer/OptionContainer"]
 custom_minimum_size = Vector2(20, 0)
@@ -125,8 +139,8 @@ layout_mode = 2
 
 [node name="RedoButton" type="Button" parent="MainContainer/TopBarContainer/OptionContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 30
-text = "Redo"
+theme_type_variation = &"HeaderButton"
+text = " Redo "
 
 [node name="Control8" type="Control" parent="MainContainer/TopBarContainer/OptionContainer"]
 custom_minimum_size = Vector2(20, 0)
@@ -148,6 +162,11 @@ autowrap_mode = 2
 layout_mode = 2
 size_flags_horizontal = 1
 
+[node name="SettingsMenu" parent="." instance=ExtResource("3_c8q2x")]
+visible = false
+layout_mode = 2
+
+[connection signal="pressed" from="MainContainer/TopBarContainer/HBoxContainer/SettingsButton" to="." method="_on_settings_button_pressed"]
 [connection signal="pressed" from="MainContainer/TopBarContainer/OptionContainer/ExitButton" to="." method="_on_exit_button_pressed"]
 [connection signal="pressed" from="MainContainer/TopBarContainer/OptionContainer/SaveButton" to="." method="_on_save_button_pressed"]
 [connection signal="color_changed" from="MainContainer/TopBarContainer/OptionContainer/ScrollContainer/HBoxContainer/ColorPickerButton" to="." method="_on_color_picker_button_color_changed"]

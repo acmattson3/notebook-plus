@@ -1,8 +1,9 @@
-[gd_scene load_steps=8 format=3 uid="uid://cxxigkblt2pi1"]
+[gd_scene load_steps=9 format=3 uid="uid://cxxigkblt2pi1"]
 
-[ext_resource type="Script" uid="uid://rnki3php8m7i" path="res://main_menu.gd" id="1_7vrkn"]
-[ext_resource type="Texture2D" uid="uid://ccc6d4xmy61ph" path="res://NotebookPlusLogoBorderless.svg" id="2_fu7sn"]
-[ext_resource type="Texture2D" uid="uid://b6qcqqe1tg0n7" path="res://NotebookPlusPlus.svg" id="3_jix8l"]
+[ext_resource type="Script" uid="uid://rnki3php8m7i" path="res://menus/main_menu.gd" id="1_7vrkn"]
+[ext_resource type="Texture2D" uid="uid://ccc6d4xmy61ph" path="res://assets/NotebookPlusLogoBorderless.svg" id="2_fu7sn"]
+[ext_resource type="Texture2D" uid="uid://b6qcqqe1tg0n7" path="res://assets/NotebookPlusPlus.svg" id="3_jix8l"]
+[ext_resource type="PackedScene" uid="uid://c4vi7iyeaccik" path="res://menus/settings_menu.tscn" id="4_rqbgu"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_7vrkn"]
 bg_color = Color(0, 0, 0, 1)
@@ -39,8 +40,8 @@ size_flags_horizontal = 3
 [node name="ExitButton" type="Button" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 40
-text = "Exit"
+theme_type_variation = &"TitleButton"
+text = " Exit "
 
 [node name="Control6" type="Control" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
@@ -54,8 +55,7 @@ expand_mode = 3
 [node name="AppNameLabel" type="RichTextLabel" parent="VBoxContainer/HBoxContainer"]
 custom_minimum_size = Vector2(450, 80)
 layout_mode = 2
-theme_override_font_sizes/normal_font_size = 64
-theme_override_font_sizes/bold_font_size = 64
+theme_type_variation = &"TitleRichLabel"
 bbcode_enabled = true
 text = "[b]Notebook[color=#9FD94B]Plus[/color][/b]"
 scroll_active = false
@@ -69,8 +69,8 @@ size_flags_horizontal = 3
 [node name="SettingsButton" type="Button" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 40
-text = "Settings"
+theme_type_variation = &"TitleButton"
+text = " Settings "
 
 [node name="Control5" type="Control" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
@@ -89,7 +89,7 @@ layout_mode = 2
 [node name="TitleSortButton" type="Button" parent="VBoxContainer/VBoxContainer/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 24
+theme_type_variation = &"HeaderButton"
 theme_override_styles/normal = SubResource("StyleBoxEmpty_7vrkn")
 text = "Notepage Title"
 
@@ -99,7 +99,7 @@ layout_mode = 2
 
 [node name="DateModifiedSortButton" type="Button" parent="VBoxContainer/VBoxContainer/HBoxContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
+theme_type_variation = &"HeaderButton"
 theme_override_styles/normal = SubResource("StyleBoxEmpty_7vrkn")
 text = "Date Modified"
 
@@ -109,7 +109,7 @@ layout_mode = 2
 
 [node name="DateCreatedSortButton" type="Button" parent="VBoxContainer/VBoxContainer/HBoxContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
+theme_type_variation = &"HeaderButton"
 theme_override_styles/normal = SubResource("StyleBoxEmpty_7vrkn")
 text = "Date Created"
 
@@ -150,7 +150,12 @@ layout_mode = 2
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 
+[node name="SettingsMenu" parent="." instance=ExtResource("4_rqbgu")]
+visible = false
+layout_mode = 2
+
 [connection signal="pressed" from="VBoxContainer/HBoxContainer/ExitButton" to="." method="_on_exit_button_pressed"]
+[connection signal="pressed" from="VBoxContainer/HBoxContainer/SettingsButton" to="." method="_on_settings_button_pressed"]
 [connection signal="pressed" from="VBoxContainer/VBoxContainer/HBoxContainer/TitleSortButton" to="." method="_on_title_sort_button_pressed"]
 [connection signal="pressed" from="VBoxContainer/VBoxContainer/HBoxContainer/DateModifiedSortButton" to="." method="_on_date_modified_sort_button_pressed"]
 [connection signal="pressed" from="VBoxContainer/VBoxContainer/HBoxContainer/DateCreatedSortButton" to="." method="_on_date_created_sort_button_pressed"]

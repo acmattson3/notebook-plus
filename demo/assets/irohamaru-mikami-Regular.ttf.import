@@ -2,13 +2,13 @@
 
 importer="font_data_dynamic"
 type="FontFile"
-uid="uid://oqdfalvhl0v5"
-path="res://.godot/imported/irohamaru-mikami-Medium.ttf-a79ca8f07dc0fffc21f2c24a6bb2b70e.fontdata"
+uid="uid://b78252y2bc78y"
+path="res://.godot/imported/irohamaru-mikami-Regular.ttf-46002acd401a1a229f575aba013dc2df.fontdata"
 
 [deps]
 
-source_file="res://irohamaru-mikami-Medium.ttf"
-dest_files=["res://.godot/imported/irohamaru-mikami-Medium.ttf-a79ca8f07dc0fffc21f2c24a6bb2b70e.fontdata"]
+source_file="res://assets/irohamaru-mikami-Regular.ttf"
+dest_files=["res://.godot/imported/irohamaru-mikami-Regular.ttf-46002acd401a1a229f575aba013dc2df.fontdata"]
 
 [params]
 

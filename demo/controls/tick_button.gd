@@ -6,23 +6,25 @@ class_name TickButton
 @export var min_value: int = 0
 @export var step_size: int = 1
 
-signal value_changed(value)
+@onready var _value_label: Label = %ValueLabel
 
-func _ready():
-	%ValueLabel.text = str(value)
+signal value_changed(value: int)
 
-func _on_button_up_pressed():
+func _ready() -> void:
+	_value_label.text = str(value)
+
+func _on_button_up_pressed() -> void:
 	if value >= max_value:
 		value = max_value
 		return
 	value += step_size
-	%ValueLabel.text = str(value)
+	_value_label.text = str(value)
 	value_changed.emit(value)
 
-func _on_button_down_pressed():
+func _on_button_down_pressed() -> void:
 	if value <= min_value:
 		value = min_value
 		return
 	value -= step_size
-	%ValueLabel.text = str(value)
+	_value_label.text = str(value)
 	value_changed.emit(value)

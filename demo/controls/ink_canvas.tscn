@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://cie461xkyn7m7"]
 
-[ext_resource type="Script" uid="uid://b6l5wa0pjvgnp" path="res://ink_canvas.gd" id="1_jc6h3"]
+[ext_resource type="Script" uid="uid://b6l5wa0pjvgnp" path="res://controls/ink_canvas.gd" id="1_jc6h3"]
 
 [node name="InkCanvas" type="Control"]
 clip_contents = true

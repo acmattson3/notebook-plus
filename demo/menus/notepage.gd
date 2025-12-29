@@ -10,7 +10,7 @@ var _autosave_timer: Timer
 var _pending_note: Dictionary = {}
 var _debugging: bool = false
 
-@onready var _title_text: TextEdit = $MainContainer/TopBarContainer/TitleTextEdit
+@onready var _title_text: TextEdit = %TitleTextEdit
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
@@ -91,6 +91,8 @@ func _ensure_note_initialized() -> void:
 	_note_id = "note_%d_%08x" % [int(Time.get_unix_time_from_system()), rng.randi()]
 	_created_ts = int(Time.get_unix_time_from_system())
 	_modified_ts = _created_ts
+	if ink_canvas:
+		ink_canvas.set_cache_note_id(_note_id)
 
 func _build_note_data() -> Dictionary:
 	var canvas_data: Dictionary = {}
@@ -131,6 +133,7 @@ func _apply_loaded_note(note: Dictionary) -> void:
 	if _title_text:
 		_title_text.text = str(note.get("title", ""))
 	if ink_canvas:
+		ink_canvas.set_cache_note_id(_note_id)
 		ink_canvas.load_from_note_data(note)
 	_dirty = false
 
@@ -148,7 +151,7 @@ func _on_save_button_pressed() -> void:
 
 func _on_exit_button_pressed() -> void:
 	_save_note_to_disk()
-	var scene: PackedScene = load("res://main_menu.tscn")
+	var scene: PackedScene = load("res://menus/main_menu.tscn")
 	if not scene:
 		return
 	var instance = scene.instantiate()
@@ -168,7 +171,7 @@ func _on_ink_canvas_touch_state_changed(state: Dictionary) -> void:
 
 func _enable_raw_input_recording() -> void:
 	if Engine.has_singleton("NotebookPlusRawInput"):
-		var raw = Engine.get_singleton("NotebookPlusRawInput")
+		var raw: Object = Engine.get_singleton("NotebookPlusRawInput")
 		if raw != null and raw.has_method("set_recording_enabled"):
 			raw.set_recording_enabled(true)
 
@@ -177,3 +180,6 @@ func _on_thickness_slider_value_changed(value: float) -> void:
 
 func _on_eraser_slider_value_changed(value: float) -> void:
 	ink_canvas.set_eraser_radius(value)
+
+func _on_settings_button_pressed() -> void:
+	$SettingsMenu.show()

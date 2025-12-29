@@ -36,6 +36,9 @@ signal touch_state_changed(state: Dictionary)
 @export var force_android_raw_input: bool = true
 @export var stroke_smoothing_enabled: bool = true
 @export var stroke_smoothing_window: int = 3
+@export var use_tile_cache: bool = true
+@export var show_tile_debug_overlay: bool = false
+@export var tile_cache_to_disk: bool = false
 
 # -----------------------------
 # Internal state
@@ -46,7 +49,7 @@ var _max_doc_y: float = 2000.0 # grows as you write
 var _dirty: bool = false
 
 # Active pointers: index -> {pos, last_pos, is_stylus}
-var _pointers := {}
+var _pointers: Dictionary = {}
 
 # Desktop mouse indices
 const INVALID_POINTER_ID := -999999
@@ -60,8 +63,8 @@ var _mode: String = "none"
 var _active_stylus_index: int = INVALID_POINTER_ID
 
 # Undo/redo stacks: each entry is a Dictionary describing an action
-var _undo := []
-var _redo := []
+var _undo: Array = []
+var _redo: Array = []
 
 # Strokes: list of stroke dicts
 # stroke = { id, color, thickness, points:[{x,y,p,t}], bbox:Rect2 }
@@ -71,8 +74,8 @@ var strokes: Array = []
 var _active_stroke: Dictionary = {}
 
 var _mouse_scroll_active: bool = false
-var _debug_label: Label
-var _raw_input = null
+var _debug_label: Label = null
+var _raw_input: Object = null
 var _raw_input_active: bool = false
 var _last_raw_event_msec: int = 0
 var _last_raw_empty_log_msec: int = 0
@@ -81,6 +84,16 @@ var _input_lockout_until_msec: int = 0
 var _raw_accept_after_msec: int = 0
 var _raw_await_fresh_down: bool = false
 const ERASER_PREVIEW_COLOR := Color(1, 0.2, 0.2, 0.25)
+const TILE_SIZES := [128, 256, 512, 1024, 2048]
+
+var _tile_size_px: int = 512
+@export var tile_size_px: int = 512: set = set_tile_size_px, get = get_tile_size_px
+var _tile_cache: Dictionary = {}
+var _tile_to_strokes: Dictionary = {}
+var _stroke_to_tiles: Dictionary = {}
+var _tile_cache_dirty: bool = true
+var _tile_cache_note_id: String = ""
+var _tile_cache_manifest_dirty: bool = false
 
 # Android MotionEvent constants (subset)
 const RAW_ACTION_DOWN := 0
@@ -99,6 +112,11 @@ const RAW_TOOL_TYPE_ERASER := 4
 # Node setup
 # -----------------------------
 func _ready() -> void:
+	EventBus.cache_tile_size_updated.connect(set_tile_size_px)
+	var saved_tile_size = int(EventBus.get_setting("tile_size", _tile_size_px))
+	set_tile_size_px(saved_tile_size)
+	EventBus.toggle_debug_lines.connect(_on_toggle_debug_lines)
+	
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	print("[InkCanvas] ready size=%s visible=%s" % [size, str(visible)])
 	call_deferred("_log_post_layout_size")
@@ -117,6 +135,10 @@ func _ready() -> void:
 		_debug_label.add_theme_font_size_override("font_size", 14)
 		_debug_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.8))
 		add_child(_debug_label)
+	queue_redraw()
+
+func _on_toggle_debug_lines(showing: bool) -> void:
+	show_tile_debug_overlay = showing
 	queue_redraw()
 
 func _process(_delta: float) -> void:
@@ -138,6 +160,31 @@ func set_pen_color(c: Color) -> void:
 
 func set_pen_thickness(t: float) -> void:
 	pen_thickness = max(0.5, t)
+
+func get_tile_size_px() -> int:
+	return _tile_size_px
+
+func set_tile_size_px(value: int) -> void:
+	if not TILE_SIZES.has(value):
+		return
+	if _tile_size_px == value:
+		return
+	var old_dir = _tile_cache_dir()
+	_tile_size_px = value
+	_reset_tile_cache(true)
+	_delete_tile_cache_dir(old_dir)
+	_rebuild_tile_cache()
+	queue_redraw()
+
+func set_cache_note_id(note_id: String) -> void:
+	if _tile_cache_note_id == note_id:
+		return
+	var old_dir = _tile_cache_dir()
+	_tile_cache_note_id = note_id
+	_reset_tile_cache(true)
+	_delete_tile_cache_dir(old_dir)
+	_rebuild_tile_cache()
+	queue_redraw()
 
 func set_eraser_radius(r: float) -> void:
 	eraser_radius_px = max(1.0, r)
@@ -180,6 +227,7 @@ func clear_all() -> void:
 	_undo.clear()
 	_redo.clear()
 	_active_stroke = {}
+	_reset_tile_cache(true)
 	_set_dirty(true)
 	emit_signal("strokes_changed")
 	queue_redraw()
@@ -188,14 +236,29 @@ func clear_all() -> void:
 func load_from_note_data(note: Dictionary) -> void:
 	# Expects note["strokes"] list; points in doc coords.
 	strokes.clear()
+	var used_ids: Dictionary = {}
+	var max_id_num: int = _stroke_counter
 	for s in note.get("strokes", []):
 		var stroke = s.duplicate(true)
+		var sid = str(stroke.get("id", ""))
+		if sid == "" or used_ids.has(sid):
+			sid = _new_stroke_id()
+			stroke["id"] = sid
+			max_id_num = max(max_id_num, _stroke_counter)
+		else:
+			var num_str = sid.substr(2, max(0, sid.length() - 2))
+			if sid.begins_with("s_") and num_str.is_valid_int():
+				max_id_num = max(max_id_num, int(num_str))
+		used_ids[sid] = true
 		stroke["bbox"] = _compute_bbox_for_points(stroke.get("points", []))
 		strokes.append(stroke)
+	_stroke_counter = max_id_num
 	_undo.clear()
 	_redo.clear()
 	_active_stroke = {}
 	_recompute_max_doc_y()
+	_reset_tile_cache(true)
+	_rebuild_tile_cache()
 	_set_dirty(false)
 	emit_signal("strokes_changed")
 	queue_redraw()
@@ -264,6 +327,8 @@ func _gui_input(event: InputEvent) -> void:
 
 func _handle_touch(e: InputEventScreenTouch) -> void:
 	if e.pressed:
+		if not _is_inside_bounds(e.position):
+			return
 		if debug_input:
 			print("[InkCanvas] touch down idx=%d %s" % [e.index, _debug_event_info(e)])
 		var is_styl = _looks_like_stylus(e)
@@ -284,14 +349,13 @@ func _handle_touch(e: InputEventScreenTouch) -> void:
 		_begin_mode_if_needed()
 	else:
 		# Release
-		var release_is_stylus = false
-		if _pointers.has(e.index):
-			release_is_stylus = _pointers[e.index].get("is_stylus", false)
-		else:
-			release_is_stylus = _looks_like_stylus(e)
+		if not _pointers.has(e.index):
+			return
+		var release_is_stylus = _pointers[e.index].get("is_stylus", false)
 		_emit_touch_state(e, release_is_stylus)
 		if e.index == _active_stylus_index and _mode == "draw" and _active_stroke.get("points", []).size() == 1:
-			var doc = _screen_to_doc(e.position)
+			var pos = _pointers[e.index]["pos"]
+			var doc = _screen_to_doc(pos)
 			_add_point_to_stroke(_active_stroke, doc, e, float(Time.get_unix_time_from_system()))
 		if _pointers.has(e.index):
 			_pointers.erase(e.index)
@@ -306,6 +370,8 @@ func _handle_touch(e: InputEventScreenTouch) -> void:
 
 func _handle_drag(e: InputEventScreenDrag) -> void:
 	if not _pointers.has(e.index):
+		return
+	if not _is_inside_bounds(e.position):
 		return
 
 	# Update pointer positions
@@ -347,6 +413,8 @@ func _handle_mouse_button(e: InputEventMouseButton) -> void:
 	# - Middle drag scrolls
 	if _is_emulated_mouse(e):
 		if e.pressed:
+			if not _is_inside_bounds(e.position):
+				return
 			var is_styl = _mouse_event_is_stylus(e)
 			if is_styl:
 				_start_mouse_draw(e.position)
@@ -364,6 +432,8 @@ func _handle_mouse_button(e: InputEventMouseButton) -> void:
 	if debug_input:
 		print("[InkCanvas] mouse button %s pressed=%s pos=%s" % [str(e.button_index), str(e.pressed), str(e.position)])
 	if e.pressed:
+		if not _is_inside_bounds(e.position):
+			return
 		if e.button_index == MOUSE_BUTTON_MIDDLE or (e.button_index == MOUSE_BUTTON_LEFT and e.shift_pressed):
 			_start_mouse_scroll(e.position)
 			_emit_touch_state(e, false)
@@ -395,6 +465,8 @@ func _handle_mouse_button(e: InputEventMouseButton) -> void:
 func _handle_mouse_motion(e: InputEventMouseMotion) -> void:
 	# Desktop testing convenience: implement if desired
 	if _is_emulated_mouse(e):
+		if not _is_inside_bounds(e.position):
+			return
 		var is_styl = _mouse_event_is_stylus(e)
 		if (e.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
 			if is_styl:
@@ -431,6 +503,8 @@ func _handle_mouse_motion(e: InputEventMouseMotion) -> void:
 			return
 	if debug_input:
 		print("[InkCanvas] mouse motion pos=%s rel=%s" % [str(e.position), str(e.relative)])
+	if not _is_inside_bounds(e.position):
+		return
 	if _pointers.is_empty():
 		if debug_input and (e.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
 			print("[InkCanvas] motion with left down but no pointers")
@@ -809,6 +883,7 @@ func _finish_active_stroke() -> void:
 	strokes.append(_active_stroke)
 	if debug_input:
 		print("[InkCanvas] stroke committed id=%s points=%d" % [_active_stroke.get("id", ""), _active_stroke.get("points", []).size()])
+	_register_stroke_in_tiles(_active_stroke)
 
 	# Undo entry
 	var action = {
@@ -923,6 +998,9 @@ func _event_position_string(event: InputEvent) -> String:
 		return str(event.position)
 	return "n/a"
 
+func _is_inside_bounds(pos: Vector2) -> bool:
+	return Rect2(Vector2.ZERO, size).has_point(pos)
+
 func _input_lockout_active() -> bool:
 	return _input_lockout_until_msec > 0 and Time.get_ticks_msec() < _input_lockout_until_msec
 
@@ -980,10 +1058,13 @@ func _handle_raw_event(e: Dictionary) -> void:
 	var pressure = float(e.get("pressure", 0.0))
 	var tilt = float(e.get("tilt", 0.0))
 	var is_styl = _raw_is_stylus(tool, pressure, tilt)
+	var in_bounds = _is_inside_bounds(pos)
 
 	if _raw_await_fresh_down:
 		if action == RAW_ACTION_DOWN or action == RAW_ACTION_POINTER_DOWN:
 			if is_action_index:
+				if not in_bounds:
+					return
 				_raw_await_fresh_down = false
 			else:
 				return
@@ -996,6 +1077,8 @@ func _handle_raw_event(e: Dictionary) -> void:
 		return
 
 	if action == RAW_ACTION_DOWN or action == RAW_ACTION_POINTER_DOWN:
+		if not in_bounds:
+			return
 		_pointers[pointer_id] = {
 			"pos": pos,
 			"last_pos": pos,
@@ -1011,6 +1094,11 @@ func _handle_raw_event(e: Dictionary) -> void:
 		return
 
 	if action == RAW_ACTION_UP or action == RAW_ACTION_POINTER_UP or action == RAW_ACTION_CANCEL:
+		if not in_bounds:
+			if _pointers.has(pointer_id):
+				pos = _pointers[pointer_id]["pos"]
+			else:
+				return
 		_emit_raw_state(e, is_styl, "up")
 		if pointer_id == _active_stylus_index and _mode == "draw":
 			if _active_stroke.get("points", []).size() == 1:
@@ -1025,6 +1113,8 @@ func _handle_raw_event(e: Dictionary) -> void:
 
 	if action == RAW_ACTION_MOVE:
 		if not _pointers.has(pointer_id):
+			return
+		if not in_bounds:
 			return
 		_pointers[pointer_id]["last_pos"] = _pointers[pointer_id]["pos"]
 		_pointers[pointer_id]["pos"] = pos
@@ -1262,6 +1352,7 @@ func _erase_at_screen_pos(screen_pos: Vector2) -> void:
 	var removed_stroke: Dictionary = strokes[idx_to_remove]
 	removed_ids.append(removed_stroke["id"])
 	strokes.remove_at(idx_to_remove)
+	_unregister_stroke_from_tiles(removed_stroke)
 
 	# Undo entry
 	var action = {
@@ -1307,6 +1398,400 @@ func _dist2_point_to_segment(p: Vector2, a: Vector2, b: Vector2) -> float:
 	return (p - proj).length_squared()
 
 # -----------------------------
+# Tile cache
+# -----------------------------
+func _reset_tile_cache(clear_disk: bool) -> void:
+	_tile_cache.clear()
+	_tile_to_strokes.clear()
+	_stroke_to_tiles.clear()
+	_tile_cache_dirty = true
+	_tile_cache_manifest_dirty = false
+	if clear_disk:
+		_delete_tile_cache_dir(_tile_cache_dir())
+
+func _rebuild_tile_cache() -> void:
+	if not use_tile_cache:
+		return
+	_tile_cache.clear()
+	_tile_to_strokes.clear()
+	_stroke_to_tiles.clear()
+	_tile_cache_dirty = false
+
+	if strokes.is_empty():
+		return
+
+	var stroke_map: Dictionary = {}
+	for s in strokes:
+		var sid = str(s.get("id", ""))
+		stroke_map[sid] = s
+		var keys = _stroke_tile_keys(s)
+		_stroke_to_tiles[sid] = keys
+		for key in keys:
+			if not _tile_to_strokes.has(key):
+				_tile_to_strokes[key] = []
+			if not _tile_to_strokes[key].has(sid):
+				_tile_to_strokes[key].append(sid)
+
+	var strokes_hash = _compute_strokes_hash()
+	_load_tile_cache_from_disk(strokes_hash)
+	for key in _tile_to_strokes.keys():
+		if not _tile_cache.has(key):
+			_rebuild_tile(key, stroke_map)
+	_update_tile_cache_manifest(strokes_hash)
+
+func _register_stroke_in_tiles(stroke: Dictionary) -> void:
+	if not use_tile_cache:
+		return
+	if _tile_cache_dirty:
+		_rebuild_tile_cache()
+		return
+	var sid = str(stroke.get("id", ""))
+	if _stroke_to_tiles.has(sid):
+		_unregister_stroke_from_tiles(stroke)
+	var keys = _stroke_tile_keys(stroke)
+	_stroke_to_tiles[sid] = keys
+	for key in keys:
+		if not _tile_to_strokes.has(key):
+			_tile_to_strokes[key] = []
+		if not _tile_to_strokes[key].has(sid):
+			_tile_to_strokes[key].append(sid)
+		_render_stroke_into_tile(key, stroke)
+	_tile_cache_manifest_dirty = true
+	_flush_tile_cache_manifest()
+
+func _unregister_stroke_from_tiles(stroke: Dictionary) -> void:
+	if not use_tile_cache:
+		return
+	if _tile_cache_dirty:
+		_rebuild_tile_cache()
+		return
+	var sid = str(stroke.get("id", ""))
+	var keys: Array = []
+	if _stroke_to_tiles.has(sid):
+		keys = _stroke_to_tiles[sid]
+	else:
+		keys = _stroke_tile_keys(stroke)
+	_stroke_to_tiles.erase(sid)
+	for key in keys:
+		if _tile_to_strokes.has(key):
+			while _tile_to_strokes[key].has(sid):
+				_tile_to_strokes[key].erase(sid)
+	_rebuild_tiles(keys)
+	_tile_cache_manifest_dirty = true
+	_flush_tile_cache_manifest()
+
+func _rebuild_tiles(keys: Array) -> void:
+	if keys.is_empty():
+		return
+	var stroke_map: Dictionary = {}
+	for s in strokes:
+		stroke_map[str(s.get("id", ""))] = s
+	for key in keys:
+		var stroke_ids: Array = _strokes_for_tile(key)
+		if stroke_ids.is_empty():
+			_tile_cache.erase(key)
+			_tile_to_strokes.erase(key)
+			_delete_tile_cache_tile(key)
+			continue
+		_tile_to_strokes[key] = stroke_ids
+		for sid in stroke_ids:
+			if not _stroke_to_tiles.has(sid):
+				_stroke_to_tiles[sid] = []
+			if not _stroke_to_tiles[sid].has(key):
+				_stroke_to_tiles[sid].append(key)
+		_rebuild_tile(key, stroke_map)
+
+func _rebuild_tile(key: String, stroke_map: Dictionary) -> void:
+	var coords: Vector2i = _tile_key_to_coords(key)
+	var origin: Vector2 = _tile_origin_doc(coords)
+	var image: Image = Image.create(_tile_size_px, _tile_size_px, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0, 0, 0, 0))
+	var stroke_ids: Array = _tile_to_strokes.get(key, [])
+	for sid in stroke_ids:
+		if not stroke_map.has(sid):
+			continue
+		_rasterize_stroke_into_tile(image, stroke_map[sid], origin)
+	_store_tile_image(key, image)
+
+func _render_stroke_into_tile(key: String, stroke: Dictionary) -> void:
+	var coords: Vector2i = _tile_key_to_coords(key)
+	var origin: Vector2 = _tile_origin_doc(coords)
+	var image: Image = _get_or_create_tile_image(key)
+	_rasterize_stroke_into_tile(image, stroke, origin)
+	_store_tile_image(key, image)
+
+func _get_or_create_tile_image(key: String) -> Image:
+	if _tile_cache.has(key):
+		return _tile_cache[key]["image"] as Image
+	var image: Image = Image.create(_tile_size_px, _tile_size_px, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0, 0, 0, 0))
+	_tile_cache[key] = {
+		"image": image,
+		"texture": null,
+	}
+	return image
+
+func _store_tile_image(key: String, image: Image) -> void:
+	var tex: ImageTexture = null
+	if _tile_cache.has(key):
+		tex = _tile_cache[key].get("texture", null) as ImageTexture
+	if tex == null:
+		tex = ImageTexture.create_from_image(image)
+	else:
+		tex.update(image)
+	_tile_cache[key] = {
+		"image": image,
+		"texture": tex,
+	}
+	_save_tile_cache_tile(key, image)
+
+func _stroke_tile_keys(stroke: Dictionary) -> Array:
+	var bbox: Rect2 = stroke.get("bbox", Rect2())
+	if bbox.size == Vector2.ZERO:
+		bbox = _compute_bbox_for_points(stroke.get("points", []))
+	var thickness = float(stroke.get("thickness", pen_thickness))
+	var expanded = bbox.grow(thickness * 0.5)
+	var min_x = int(floor(expanded.position.x / _tile_size_px))
+	var min_y = int(floor(expanded.position.y / _tile_size_px))
+	var max_x = int(floor((expanded.position.x + expanded.size.x) / _tile_size_px))
+	var max_y = int(floor((expanded.position.y + expanded.size.y) / _tile_size_px))
+	var keys: Array = []
+	for tx in range(min_x, max_x + 1):
+		for ty in range(min_y, max_y + 1):
+			if tx < 0 or ty < 0:
+				continue
+			keys.append(_tile_key(tx, ty))
+	return keys
+
+func _strokes_for_tile(key: String) -> Array:
+	var coords: Vector2i = _tile_key_to_coords(key)
+	var tile_rect = Rect2(_tile_origin_doc(coords), Vector2(_tile_size_px, _tile_size_px))
+	var stroke_ids: Array = []
+	for s in strokes:
+		if _stroke_intersects_tile(s, tile_rect):
+			stroke_ids.append(str(s.get("id", "")))
+	return stroke_ids
+
+func _stroke_intersects_tile(stroke: Dictionary, tile_rect: Rect2) -> bool:
+	var bbox: Rect2 = stroke.get("bbox", Rect2())
+	if bbox.size == Vector2.ZERO:
+		bbox = _compute_bbox_for_points(stroke.get("points", []))
+	var thickness = float(stroke.get("thickness", pen_thickness))
+	var expanded = bbox.grow(thickness * 0.5)
+	return expanded.intersects(tile_rect)
+
+func _tile_key(tx: int, ty: int) -> String:
+	return "%d:%d" % [tx, ty]
+
+func _tile_key_to_coords(key: String) -> Vector2i:
+	var parts = key.split(":")
+	if parts.size() != 2:
+		return Vector2i.ZERO
+	return Vector2i(int(parts[0]), int(parts[1]))
+
+func _tile_origin_doc(coords: Vector2i) -> Vector2:
+	return Vector2(coords.x * _tile_size_px, coords.y * _tile_size_px)
+
+func _rasterize_stroke_into_tile(image: Image, stroke: Dictionary, tile_origin: Vector2) -> void:
+	var pts = stroke.get("points", [])
+	if pts.size() == 0:
+		return
+	var thickness = max(1, int(round(float(stroke.get("thickness", pen_thickness)))))
+	var color = _stroke_color(stroke)
+	if pts.size() == 1:
+		var p = Vector2(float(pts[0]["x"]), float(pts[0]["y"])) - tile_origin
+		_draw_circle_image(image, p, max(1.0, float(thickness) * 0.5), color)
+		return
+	var local_pts = PackedVector2Array()
+	local_pts.resize(pts.size())
+	for i in range(pts.size()):
+		local_pts[i] = Vector2(float(pts[i]["x"]), float(pts[i]["y"])) - tile_origin
+	if stroke_smoothing_enabled:
+		local_pts = _smooth_screen_points(local_pts, stroke_smoothing_window)
+	for i in range(local_pts.size() - 1):
+		_rasterize_line_into_image(image, local_pts[i], local_pts[i + 1], color, thickness)
+	if local_pts.size() >= 2:
+		var cap_r = max(1.0, float(thickness) * 0.5)
+		_draw_circle_image(image, local_pts[0], cap_r, color)
+		_draw_circle_image(image, local_pts[local_pts.size() - 1], cap_r, color)
+
+func _stroke_color(stroke: Dictionary) -> Color:
+	if stroke.has("color"):
+		var cstr = str(stroke["color"])
+		if not cstr.begins_with("#"):
+			cstr = "#" + cstr
+		return Color.html(cstr)
+	return pen_color
+
+func _rasterize_line_into_image(image: Image, a: Vector2, b: Vector2, color: Color, thickness: int) -> void:
+	var dist = a.distance_to(b)
+	if dist <= 0.001:
+		_draw_circle_image(image, a, max(1.0, float(thickness) * 0.5), color)
+		return
+	var step = max(1.0, float(thickness) * 0.5)
+	var steps = int(ceil(dist / step))
+	for i in range(steps + 1):
+		var t = float(i) / float(steps)
+		var p = a.lerp(b, t)
+		_draw_circle_image(image, p, max(1.0, float(thickness) * 0.5), color)
+
+func _draw_circle_image(image: Image, center: Vector2, radius: float, color: Color) -> void:
+	var r = int(ceil(radius))
+	if r <= 0:
+		return
+	var cx = int(round(center.x))
+	var cy = int(round(center.y))
+	var min_x = max(0, cx - r)
+	var max_x = min(image.get_width() - 1, cx + r)
+	var min_y = max(0, cy - r)
+	var max_y = min(image.get_height() - 1, cy + r)
+	var r2 = float(r * r)
+	for y in range(min_y, max_y + 1):
+		var dy = float(y - cy)
+		for x in range(min_x, max_x + 1):
+			var dx = float(x - cx)
+			if dx * dx + dy * dy <= r2:
+				image.set_pixel(x, y, color)
+
+func _compute_strokes_hash() -> String:
+	var hash: int = 0
+	for s in strokes:
+		var sid = str(s.get("id", ""))
+		hash = int((hash + sid.hash()) % 2147483647)
+		hash = int((hash + int(float(s.get("thickness", pen_thickness)) * 10.0)) % 2147483647)
+		for p in s.get("points", []):
+			hash = int((hash + int(float(p["x"]) * 10.0) + int(float(p["y"]) * 10.0)) % 2147483647)
+	return str(hash)
+
+func _tile_cache_dir() -> String:
+	if _tile_cache_note_id == "":
+		return ""
+	return "user://tile_cache/%s/%d" % [_tile_cache_note_id, _tile_size_px]
+
+func _tile_cache_manifest_path() -> String:
+	var dir = _tile_cache_dir()
+	if dir == "":
+		return ""
+	return dir.path_join("manifest.json")
+
+func _tile_cache_tile_path(key: String) -> String:
+	var coords = _tile_key_to_coords(key)
+	return _tile_cache_dir().path_join("tile_%d_%d.png" % [coords.x, coords.y])
+
+func _load_tile_cache_from_disk(strokes_hash: String) -> bool:
+	if not tile_cache_to_disk:
+		return false
+	var dir = _tile_cache_dir()
+	if dir == "":
+		return false
+	var manifest_path = _tile_cache_manifest_path()
+	if manifest_path == "" or not FileAccess.file_exists(manifest_path):
+		return false
+	var f = FileAccess.open(manifest_path, FileAccess.READ)
+	if not f:
+		return false
+	var parsed = JSON.parse_string(f.get_as_text())
+	f.close()
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return false
+	if str(parsed.get("hash", "")) != strokes_hash:
+		return false
+	if int(parsed.get("tile_size", 0)) != _tile_size_px:
+		return false
+	var tiles = parsed.get("tiles", [])
+	if typeof(tiles) != TYPE_ARRAY:
+		return false
+	for entry in tiles:
+		if typeof(entry) != TYPE_ARRAY or entry.size() != 2:
+			continue
+		var key = _tile_key(int(entry[0]), int(entry[1]))
+		var path = _tile_cache_tile_path(key)
+		if not FileAccess.file_exists(path):
+			continue
+		var image: Image = Image.new()
+		if image.load(path) != OK:
+			continue
+		_tile_cache[key] = {
+			"image": image,
+			"texture": ImageTexture.create_from_image(image),
+		}
+	return not _tile_cache.is_empty()
+
+func _save_tile_cache_tile(key: String, image: Image) -> void:
+	if not tile_cache_to_disk:
+		return
+	var dir = _tile_cache_dir()
+	if dir == "":
+		return
+	var root = DirAccess.open("user://")
+	if root:
+		var rel = "tile_cache/%s/%d" % [_tile_cache_note_id, _tile_size_px]
+		if not root.dir_exists(rel):
+			root.make_dir_recursive(rel)
+	image.save_png(_tile_cache_tile_path(key))
+
+func _delete_tile_cache_tile(key: String) -> void:
+	if not tile_cache_to_disk:
+		return
+	var path = _tile_cache_tile_path(key)
+	if path != "" and FileAccess.file_exists(path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+func _update_tile_cache_manifest(strokes_hash: String) -> void:
+	if not tile_cache_to_disk:
+		return
+	var entries: Array = []
+	for key in _tile_cache.keys():
+		var coords = _tile_key_to_coords(key)
+		entries.append([coords.x, coords.y])
+	var manifest = {
+		"tile_size": _tile_size_px,
+		"hash": strokes_hash,
+		"tiles": entries,
+	}
+	var path = _tile_cache_manifest_path()
+	if path == "":
+		return
+	var root = DirAccess.open("user://")
+	if root:
+		var rel = "tile_cache/%s/%d" % [_tile_cache_note_id, _tile_size_px]
+		if not root.dir_exists(rel):
+			root.make_dir_recursive(rel)
+	var f = FileAccess.open(path, FileAccess.WRITE)
+	if not f:
+		return
+	f.store_string(JSON.stringify(manifest, "\t"))
+	f.close()
+	_tile_cache_manifest_dirty = false
+
+func _flush_tile_cache_manifest() -> void:
+	if not _tile_cache_manifest_dirty:
+		return
+	_update_tile_cache_manifest(_compute_strokes_hash())
+
+func _delete_tile_cache_dir(path: String) -> void:
+	if path == "":
+		return
+	var abs = ProjectSettings.globalize_path(path)
+	var dir = DirAccess.open(path)
+	if not dir:
+		return
+	dir.list_dir_begin()
+	var file = dir.get_next()
+	while file != "":
+		if file == "." or file == "..":
+			file = dir.get_next()
+			continue
+		var full = path.path_join(file)
+		if dir.current_is_dir():
+			_delete_tile_cache_dir(full)
+		else:
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(full))
+		file = dir.get_next()
+	dir.list_dir_end()
+	DirAccess.remove_absolute(abs)
+
+# -----------------------------
 # Rendering
 # -----------------------------
 func _draw() -> void:
@@ -1323,9 +1808,25 @@ func _draw() -> void:
 	# Clip drawing to the page rect by manual cull (Control doesn't auto-clip draw calls).
 	# MVP: just cull by x bounds and y in view.
 
-	# Draw committed strokes
-	for s in strokes:
-		_draw_stroke(s, page_left)
+	if use_tile_cache:
+		if _tile_cache_dirty:
+			_rebuild_tile_cache()
+		for key in _tile_cache.keys():
+			var coords = _tile_key_to_coords(key)
+			var origin = _tile_origin_doc(coords)
+			var screen_pos = Vector2(page_left + origin.x, origin.y - _scroll_y)
+			var rect = Rect2(screen_pos, Vector2(_tile_size_px, _tile_size_px))
+			if rect.position.x > size.x or rect.position.x + rect.size.x < 0:
+				continue
+			if rect.position.y > size.y or rect.position.y + rect.size.y < 0:
+				continue
+			var tex: ImageTexture = _tile_cache[key].get("texture", null)
+			if tex != null:
+				draw_texture_rect(tex, rect, false)
+	else:
+		# Draw committed strokes
+		for s in strokes:
+			_draw_stroke(s, page_left)
 
 	# Draw active stroke
 	if not _active_stroke.is_empty():
@@ -1336,6 +1837,19 @@ func _draw() -> void:
 		var erase_pos = _get_erase_preview_pos()
 		if erase_pos != null:
 			draw_circle(erase_pos, eraser_radius_px, ERASER_PREVIEW_COLOR)
+
+	if show_tile_debug_overlay and use_tile_cache:
+		var tile_size = float(_tile_size_px)
+		var min_tx = int(floor(0.0 / tile_size))
+		var max_tx = int(floor((page_width_px - 1.0) / tile_size))
+		var min_ty = int(floor(_scroll_y / tile_size))
+		var max_ty = int(floor((_scroll_y + size.y) / tile_size))
+		for tx in range(min_tx, max_tx + 1):
+			for ty in range(min_ty, max_ty + 1):
+				var origin = Vector2(tx * tile_size, ty * tile_size)
+				var screen_pos = Vector2(page_left + origin.x, origin.y - _scroll_y)
+				var rect = Rect2(screen_pos, Vector2(tile_size, tile_size))
+				draw_rect(rect, Color(0, 1, 0, 0.2), false, 1.0)
 
 func _draw_stroke(stroke: Dictionary, page_left: float) -> void:
 	var pts = stroke.get("points", [])
@@ -1437,11 +1951,14 @@ func _apply_undo(action: Dictionary) -> void:
 	match action.get("type", ""):
 		"add_stroke":
 			var sid = action["stroke"]["id"]
-			_remove_stroke_by_id(sid)
+			var removed = _remove_stroke_by_id(sid)
+			if not removed.is_empty():
+				_unregister_stroke_from_tiles(removed)
 		"erase_strokes":
 			# Restore erased strokes
 			for s in action.get("strokes", []):
 				strokes.append(s)
+				_register_stroke_in_tiles(s)
 		_:
 			pass
 	_recompute_max_doc_y()
@@ -1450,18 +1967,23 @@ func _apply_redo(action: Dictionary) -> void:
 	match action.get("type", ""):
 		"add_stroke":
 			strokes.append(action["stroke"])
+			_register_stroke_in_tiles(action["stroke"])
 		"erase_strokes":
 			for s in action.get("strokes", []):
-				_remove_stroke_by_id(s["id"])
+				var removed = _remove_stroke_by_id(s["id"])
+				if not removed.is_empty():
+					_unregister_stroke_from_tiles(removed)
 		_:
 			pass
 	_recompute_max_doc_y()
 
-func _remove_stroke_by_id(sid: String) -> void:
+func _remove_stroke_by_id(sid: String) -> Dictionary:
 	for i in range(strokes.size() - 1, -1, -1):
 		if str(strokes[i].get("id", "")) == sid:
+			var removed: Dictionary = strokes[i]
 			strokes.remove_at(i)
-			return
+			return removed
+	return {}
 
 func _recompute_max_doc_y() -> void:
 	var maxy = 2000.0

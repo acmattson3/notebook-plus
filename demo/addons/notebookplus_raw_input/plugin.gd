@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-var _export_plugin := preload("res://addons/notebookplus_raw_input/export_plugin.gd").new()
+var _export_plugin: EditorExportPlugin = preload("res://addons/notebookplus_raw_input/export_plugin.gd").new()
 
 func _enter_tree() -> void:
 	add_export_plugin(_export_plugin)

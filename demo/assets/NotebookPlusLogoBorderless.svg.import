@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dmt5k2km347aq"
-path="res://.godot/imported/NotebookPlusLogo.svg-b348e922e5911a037ca1456bd4a69643.ctex"
+uid="uid://ccc6d4xmy61ph"
+path="res://.godot/imported/NotebookPlusLogoBorderless.svg-007c150fbb432ae13b864edb8ab43adf.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://NotebookPlusLogo.svg"
-dest_files=["res://.godot/imported/NotebookPlusLogo.svg-b348e922e5911a037ca1456bd4a69643.ctex"]
+source_file="res://assets/NotebookPlusLogoBorderless.svg"
+dest_files=["res://.godot/imported/NotebookPlusLogoBorderless.svg-007c150fbb432ae13b864edb8ab43adf.ctex"]
 
 [params]
 

@@ -1,6 +1,6 @@
 [gd_scene load_steps=5 format=3 uid="uid://ctfc7v5v2ubr0"]
 
-[ext_resource type="Script" uid="uid://xo7ak1blw8a8" path="res://notepage_button.gd" id="1_drg7l"]
+[ext_resource type="Script" uid="uid://xo7ak1blw8a8" path="res://controls/notepage_button.gd" id="1_drg7l"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ru705"]
 bg_color = Color(0.19215687, 0.22745098, 0.23921569, 1)
@@ -40,9 +40,11 @@ layout_mode = 2
 [node name="TitleLabel" type="Label" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 24
+theme_type_variation = &"HeaderLabel"
 text = "Notepage Title"
 vertical_alignment = 1
+clip_text = true
+text_overrun_behavior = 3
 
 [node name="Spacer" type="Control" parent="VBoxContainer/HBoxContainer"]
 custom_minimum_size = Vector2(50, 0)
@@ -50,7 +52,7 @@ layout_mode = 2
 
 [node name="DateModifiedLabel" type="Label" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
+theme_type_variation = &"HeaderLabel"
 text = "Date Modified"
 vertical_alignment = 1
 
@@ -60,7 +62,7 @@ layout_mode = 2
 
 [node name="DateCreatedLabel" type="Label" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
+theme_type_variation = &"HeaderLabel"
 text = "Date Created"
 vertical_alignment = 1
 

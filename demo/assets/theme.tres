@@ -1,0 +1,32 @@
+[gd_resource type="Theme" load_steps=4 format=3 uid="uid://blanmikdfin25"]
+
+[ext_resource type="FontFile" uid="uid://oqdfalvhl0v5" path="res://assets/irohamaru-mikami-Medium.ttf" id="1_5x3i2"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wvktn"]
+bg_color = Color(0.74509805, 0.9019608, 0.5176471, 0.74509805)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_e1x85"]
+bg_color = Color(0.5529412, 0.80784315, 0.26666668, 0.69803923)
+
+[resource]
+Button/fonts/font = ExtResource("1_5x3i2")
+Button/styles/hover = SubResource("StyleBoxFlat_wvktn")
+Button/styles/normal = SubResource("StyleBoxFlat_e1x85")
+HeaderButton/base_type = &"Button"
+HeaderButton/font_sizes/font_size = 30
+HeaderLabel/base_type = &"Label"
+HeaderLabel/font_sizes/font_size = 28
+TitleButton/base_type = &"Button"
+TitleButton/font_sizes/font_size = 40
+TitleButton/fonts/font = ExtResource("1_5x3i2")
+TitleLabel/base_type = &"Label"
+TitleLabel/font_sizes/font_size = 64
+TitleRichLabel/base_type = &"RichTextLabel"
+TitleRichLabel/font_sizes/bold_font_size = 64
+TitleRichLabel/font_sizes/bold_italics_font_size = 64
+TitleRichLabel/font_sizes/italics_font_size = 64
+TitleRichLabel/font_sizes/mono_font_size = 64
+TitleRichLabel/font_sizes/normal_font_size = 64
+TitleRichLabel/fonts/bold_font = ExtResource("1_5x3i2")
+TitleTextBox/base_type = &"TextEdit"
+TitleTextBox/font_sizes/font_size = 48

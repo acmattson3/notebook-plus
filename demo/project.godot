@@ -16,7 +16,11 @@ config/features=PackedStringArray("4.5", "GL Compatibility")
 boot_splash/bg_color=Color(0, 0, 0, 1)
 boot_splash/fullsize=false
 boot_splash/image="uid://hq0oxkefd756"
-config/icon="res://NotebookPlusLogo.png"
+config/icon="res://assets/NotebookPlusLogo.png"
+
+[autoload]
+
+EventBus="*res://event_bus.gd"
 
 [display]
 

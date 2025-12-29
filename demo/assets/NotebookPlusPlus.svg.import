@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c5ootelgl07j2"
-path="res://.godot/imported/NotebookPlusLogoBorderless.png-df848830cadd654a6e084c749465622b.ctex"
+uid="uid://b6qcqqe1tg0n7"
+path="res://.godot/imported/NotebookPlusPlus.svg-288d0f2634aee9ada3f58eb69edc5ff2.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://NotebookPlusLogoBorderless.png"
-dest_files=["res://.godot/imported/NotebookPlusLogoBorderless.png-df848830cadd654a6e084c749465622b.ctex"]
+source_file="res://assets/NotebookPlusPlus.svg"
+dest_files=["res://.godot/imported/NotebookPlusPlus.svg-288d0f2634aee9ada3f58eb69edc5ff2.ctex"]
 
 [params]
 
@@ -38,3 +38,6 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
+svg/scale=1.0
+editor/scale_with_editor_scale=false
+editor/convert_colors_with_editor_theme=false
