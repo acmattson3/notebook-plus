@@ -33,6 +33,10 @@ window/handheld/orientation=1
 
 enabled=PackedStringArray("res://addons/notebookplus_raw_input/plugin.cfg")
 
+[filesystem]
+
+android/use_external_storage=true
+
 [gui]
 
 theme/custom="uid://blanmikdfin25"
